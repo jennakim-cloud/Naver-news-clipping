@@ -129,7 +129,7 @@ OID_MAP = {
 }
 
 GROUP_MAP = {
-    "1코노미뉴스":"그룹 B","CBS노컷뉴스":"그룹 A","CEO스코어데일리":"그룹 C",
+    "1코노미뉴스":"그룹 B","CBS노컷뉴스":"그룹 A","CEO 스코어데일리":"그룹 C",
     "EBN":"그룹 B","FETV":"그룹 C","IT조선":"그룹 C","KBS":"그룹 A",
     "K패션뉴스":"그룹 C","MBC":"그룹 A","MBN":"그룹 A","S-저널":"그룹 C",
     "SBS":"그룹 A","SBS Biz":"그룹 A","SR타임스":"그룹 C","TV조선":"그룹 A",
@@ -212,7 +212,7 @@ def publisher_from_url(link: str) -> str:
 
 
 def fetch_naver_article_info(link: str) -> dict:
-    result = {"publisher": publisher_from_url(link), "pick": ""}
+    result = {"publisher": publisher_from_url(link), "pick": "", "print": ""}
     if "naver.com" not in link:
         return result
     try:
@@ -221,6 +221,7 @@ def fetch_naver_article_info(link: str) -> dict:
             return result
         soup = BeautifulSoup(res.text, 'html.parser')
 
+        # ── 매체명 추출 ───────────────────────────────────────
         publisher = ""
         logo = soup.select_one('a.press_logo img, .media_end_head_top a img')
         if logo:
@@ -236,10 +237,36 @@ def fetch_naver_article_info(link: str) -> dict:
         if publisher:
             result["publisher"] = publisher
 
+        # ── PICK 여부 ─────────────────────────────────────────
         if soup.select_one('.is_pick, .media_end_head_journalist_edit_label'):
             result["pick"] = "PICK"
         elif "PICK" in res.text:
             result["pick"] = "PICK"
+
+        # ── 지면 여부 ─────────────────────────────────────────
+        # 네이버 뉴스에서 지면 기사는 아래 단서 중 하나 이상 존재
+        # 1) <em class="media_end_head_autosummary_badge"> 등 "지면기사" 텍스트
+        # 2) og:article:section 메타가 "지면" 포함
+        # 3) .print_article, .article_print 등 지면 전용 CSS 클래스
+        # 4) 본문 내 "지면기사" 문자열
+        page_text = res.text
+        is_print = False
+        # 방법 A: 지면 전용 배지/레이블 태그
+        if soup.select_one('.media_end_head_autosummary_badge, .offlabel, [class*="print"]'):
+            is_print = True
+        # 방법 B: "지면기사" 또는 "지면" 텍스트가 특정 태그 안에 존재
+        if not is_print:
+            for tag in soup.select('em, span, div'):
+                txt = tag.get_text(strip=True)
+                if txt in ("지면기사", "지면"):
+                    is_print = True
+                    break
+        # 방법 C: HTML 소스에 지면 마커 문자열 포함
+        if not is_print:
+            if "지면기사" in page_text or "ⓢ" in page_text or "paper_article" in page_text:
+                is_print = True
+        result["print"] = "지면" if is_print else ""
+
     except Exception:
         pass
     return result
@@ -260,7 +287,7 @@ def build_excel(df: pd.DataFrame) -> bytes:
         for col_num, col_name in enumerate(df.columns):
             worksheet.write(0, col_num, col_name, header_fmt)
 
-        col_widths = {"그룹": 8, "매체명": 16, "제목": 60, "PICK": 6, "게시일": 18}
+        col_widths = {"그룹": 8, "매체명": 16, "제목": 60, "PICK": 6, "지면": 6, "게시일": 18}
         for col_num, col_name in enumerate(df.columns):
             worksheet.set_column(col_num, col_num, col_widths.get(col_name, 12))
 
@@ -367,7 +394,8 @@ def run_search(query: str, client_id: str, client_secret: str,
             except Exception:
                 crawl_results[idx] = {
                     "publisher": publisher_from_url(raw_items[idx]["link"]),
-                    "pick": ""
+                    "pick": "",
+                    "print": ""
                 }
             done += 1
             pct = 20 + int(done / total * 70)   # 20~90% 구간
@@ -394,6 +422,7 @@ def run_search(query: str, client_id: str, client_secret: str,
             "제목_표시": title,   # 화면 표시용 (수식 없는 버전)
             "링크":   link,
             "PICK":   pick_val,
+            "지면":   info.get("print", ""),
             "게시일": item["pub_date"].strftime('%Y-%m-%d %H:%M'),
         })
 
@@ -416,20 +445,26 @@ st.title("📰 네이버 뉴스 클리핑")
 st.caption("키워드로 최근 7일 기사를 수집하고 엑셀로 다운로드합니다.")
 
 # ── 사이드바: API 키 입력 ──────────────────────────────────────
+# ── API 키: st.secrets 우선 → 없으면 환경변수 폴백 ──────────
+# Streamlit Cloud: .streamlit/secrets.toml 에 아래 항목 추가
+#   [naver]
+#   client_id     = "YOUR_CLIENT_ID"
+#   client_secret = "YOUR_CLIENT_SECRET"
+try:
+    client_id     = st.secrets["naver"]["client_id"]
+    client_secret = st.secrets["naver"]["client_secret"]
+except Exception:
+    import os
+    client_id     = os.environ.get("NAVER_CLIENT_ID", "")
+    client_secret = os.environ.get("NAVER_CLIENT_SECRET", "")
+
 with st.sidebar:
     st.header("⚙️ 설정")
-    client_id = st.text_input(
-        "네이버 Client ID",
-        value="_xwUpsu3wHgwgduYYY3H",
-        type="password",
-        help="네이버 개발자 센터에서 발급받은 Client ID"
-    )
-    client_secret = st.text_input(
-        "네이버 Client Secret",
-        value="zx1KJ7Gm1o",
-        type="password",
-        help="네이버 개발자 센터에서 발급받은 Client Secret"
-    )
+    # API 키 상태만 표시 (값은 노출하지 않음)
+    if client_id and client_secret:
+        st.success("✅ API 키 연결됨", icon="🔑")
+    else:
+        st.error("❌ API 키 없음\n`.streamlit/secrets.toml` 또는 환경변수를 확인하세요.")
     st.divider()
     st.markdown("**그룹 색상 기준**")
     st.markdown(
@@ -456,7 +491,7 @@ if search_clicked:
     if not query.strip():
         st.warning("검색어를 입력해주세요.")
     elif not client_id or not client_secret:
-        st.error("사이드바에서 네이버 API 키를 입력해주세요.")
+        st.error("API 키가 설정되지 않았습니다. `.streamlit/secrets.toml` 또는 환경변수를 확인해주세요.")
     else:
         progress_bar = st.progress(0)
         status_text  = st.empty()
@@ -487,13 +522,15 @@ if "df" in st.session_state:
     cnt_etc = (df["그룹"] == "").sum()
     cnt_pick = (df["PICK"] == "PICK").sum()
 
-    m1, m2, m3, m4, m5, m6 = st.columns(6)
+    cnt_print = (df["지면"] == "지면").sum()
+    m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
     m1.metric("전체", f"{total}건")
     m2.metric("그룹 A", f"{cnt_a}건")
     m3.metric("그룹 B", f"{cnt_b}건")
     m4.metric("그룹 C", f"{cnt_c}건")
     m5.metric("미분류", f"{cnt_etc}건")
     m6.metric("PICK", f"{cnt_pick}건")
+    m7.metric("지면", f"{cnt_print}건")
 
     st.divider()
 
@@ -532,7 +569,8 @@ if "df" in st.session_state:
             group     = row["그룹"]
             badge_style = GROUP_BADGE.get(group, GROUP_BADGE[""])
             badge     = f'<span style="{badge_style}">{group if group else "미분류"}</span>'
-            pick_html = '<span style="color:#e74c3c;font-weight:bold;">PICK</span>' if row["PICK"] == "PICK" else ""
+            pick_html  = '<span style="color:#e74c3c;font-weight:bold;">PICK</span>' if row["PICK"] == "PICK" else ""
+            print_html = '<span style="color:#5b6bab;font-weight:bold;">지면</span>' if row["지면"] == "지면" else ""
             title_html = f'<a href="{row["링크"]}" target="_blank" style="text-decoration:none;color:#1a73e8;">{row["제목_표시"]}</a>'
             row_bg = GROUP_COLORS.get(group, "#FFFFFF")
             rows_html += f"""
@@ -541,6 +579,7 @@ if "df" in st.session_state:
                 <td style="padding:6px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-weight:500;">{row["매체명"]}</td>
                 <td style="padding:6px 10px;border-bottom:1px solid #eee;">{title_html}</td>
                 <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center;">{pick_html}</td>
+                <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center;">{print_html}</td>
                 <td style="padding:6px 10px;border-bottom:1px solid #eee;white-space:nowrap;color:#666;font-size:0.85em;">{row["게시일"]}</td>
             </tr>"""
 
@@ -555,7 +594,7 @@ if "df" in st.session_state:
         <table class="clip-table">
             <thead>
                 <tr>
-                    <th>그룹</th><th>매체명</th><th>제목</th><th>PICK</th><th>게시일</th>
+                    <th>그룹</th><th>매체명</th><th>제목</th><th>PICK</th><th>지면</th><th>게시일</th>
                 </tr>
             </thead>
             <tbody>{rows_html}</tbody>
@@ -567,7 +606,7 @@ if "df" in st.session_state:
     # ── 엑셀 다운로드 ─────────────────────────────────────────
     st.divider()
     # 엑셀용 df (제목_표시, 링크 컬럼 제거, 제목은 HYPERLINK 수식 유지)
-    df_excel = df_filtered[["그룹", "매체명", "제목", "PICK", "게시일"]].reset_index(drop=True)
+    df_excel = df_filtered[["그룹", "매체명", "제목", "PICK", "지면", "게시일"]].reset_index(drop=True)
     excel_bytes = build_excel(df_excel)
     file_name   = f"naver_news_{query}_{now.strftime('%Y%m%d_%H%M%S')}.xlsx"
 
