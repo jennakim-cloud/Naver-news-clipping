@@ -221,7 +221,6 @@ def fetch_naver_article_info(link: str) -> dict:
             return result
         soup = BeautifulSoup(res.text, 'html.parser')
 
-        # ── 매체명 추출 ───────────────────────────────────────
         publisher = ""
         logo = soup.select_one('a.press_logo img, .media_end_head_top a img')
         if logo:
@@ -243,28 +242,43 @@ def fetch_naver_article_info(link: str) -> dict:
         elif "PICK" in res.text:
             result["pick"] = "PICK"
 
-        # ── 지면 여부 ─────────────────────────────────────────
-        # 네이버 뉴스에서 지면 기사는 아래 단서 중 하나 이상 존재
-        # 1) <em class="media_end_head_autosummary_badge"> 등 "지면기사" 텍스트
-        # 2) og:article:section 메타가 "지면" 포함
-        # 3) .print_article, .article_print 등 지면 전용 CSS 클래스
-        # 4) 본문 내 "지면기사" 문자열
-        page_text = res.text
+        # ── 지면 여부 (정밀 감지) ─────────────────────────────
+        # 네이버 지면기사 전용 마커만 체크 (관련기사 영역 오탐 방지)
         is_print = False
-        # 방법 A: 지면 전용 배지/레이블 태그
-        if soup.select_one('.media_end_head_autosummary_badge, .offlabel, [class*="print"]'):
+
+        # 방법 A: 지면기사 전용 배지 태그
+        # - .media_end_head_info_datestamp 안의 "지면기사" em/span
+        # - .article_info 영역 내 지면 표시
+        badge = soup.select_one(
+            '.media_end_head_info_datestamp em, '
+            '.article_info .article_info_paper, '
+            '.article_info em.article_paper'
+        )
+        if badge and "지면" in badge.get_text():
             is_print = True
-        # 방법 B: "지면기사" 또는 "지면" 텍스트가 특정 태그 안에 존재
+
+        # 방법 B: <meta> 태그에서 지면 여부 확인
+        # og:article:section 또는 네이버 전용 메타에 "지면" 포함 여부
         if not is_print:
-            for tag in soup.select('em, span, div'):
-                txt = tag.get_text(strip=True)
-                if txt in ("지면기사", "지면"):
+            for meta in soup.find_all('meta'):
+                name = meta.get('name', '') + meta.get('property', '')
+                val  = meta.get('content', '')
+                if 'section' in name.lower() and '지면' in val:
                     is_print = True
                     break
-        # 방법 C: HTML 소스에 지면 마커 문자열 포함
+
+        # 방법 C: 기사 본문 영역(#dic_area, #articeBody) 직전의
+        # 헤더 영역에서만 "지면기사" 텍스트 탐색 (관련기사 영역 제외)
         if not is_print:
-            if "지면기사" in page_text or "ⓢ" in page_text or "paper_article" in page_text:
+            header_area = soup.select_one(
+                '.media_end_head_info, '
+                '.article_head_info, '
+                '#articleBodyContents + .article_info, '
+                '.news_headline'
+            )
+            if header_area and "지면기사" in header_area.get_text():
                 is_print = True
+
         result["print"] = "지면" if is_print else ""
 
     except Exception:
@@ -445,26 +459,20 @@ st.title("📰 네이버 뉴스 클리핑")
 st.caption("키워드로 최근 7일 기사를 수집하고 엑셀로 다운로드합니다.")
 
 # ── 사이드바: API 키 입력 ──────────────────────────────────────
-# ── API 키: st.secrets 우선 → 없으면 환경변수 폴백 ──────────
-# Streamlit Cloud: .streamlit/secrets.toml 에 아래 항목 추가
-#   [naver]
-#   client_id     = "YOUR_CLIENT_ID"
-#   client_secret = "YOUR_CLIENT_SECRET"
-try:
-    client_id     = st.secrets["naver"]["client_id"]
-    client_secret = st.secrets["naver"]["client_secret"]
-except Exception:
-    import os
-    client_id     = os.environ.get("NAVER_CLIENT_ID", "")
-    client_secret = os.environ.get("NAVER_CLIENT_SECRET", "")
-
 with st.sidebar:
     st.header("⚙️ 설정")
-    # API 키 상태만 표시 (값은 노출하지 않음)
-    if client_id and client_secret:
-        st.success("✅ API 키 연결됨", icon="🔑")
-    else:
-        st.error("❌ API 키 없음\n`.streamlit/secrets.toml` 또는 환경변수를 확인하세요.")
+    client_id = st.text_input(
+        "네이버 Client ID",
+        value="_xwUpsu3wHgwgduYYY3H",
+        type="password",
+        help="네이버 개발자 센터에서 발급받은 Client ID"
+    )
+    client_secret = st.text_input(
+        "네이버 Client Secret",
+        value="zx1KJ7Gm1o",
+        type="password",
+        help="네이버 개발자 센터에서 발급받은 Client Secret"
+    )
     st.divider()
     st.markdown("**그룹 색상 기준**")
     st.markdown(
@@ -491,7 +499,7 @@ if search_clicked:
     if not query.strip():
         st.warning("검색어를 입력해주세요.")
     elif not client_id or not client_secret:
-        st.error("API 키가 설정되지 않았습니다. `.streamlit/secrets.toml` 또는 환경변수를 확인해주세요.")
+        st.error("사이드바에서 네이버 API 키를 입력해주세요.")
     else:
         progress_bar = st.progress(0)
         status_text  = st.empty()
