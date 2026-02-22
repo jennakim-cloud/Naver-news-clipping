@@ -181,6 +181,8 @@ GROUP_MAP = {
     "헤럴드경제":"그룹 A","현대경제신문":"그룹 C","후지TV":"그룹 C",
 }
 
+
+
 # ══════════════════════════════════════════════════════════════
 #  헬퍼 함수 (기존과 동일)
 # ══════════════════════════════════════════════════════════════
@@ -211,8 +213,39 @@ def publisher_from_url(link: str) -> str:
         return "기타매체"
 
 
+
+# ── 지면 정보 패턴 (예: "A16면 1단", "18면 1단", "B3면 3단") ──
+PRINT_PATTERN = re.compile(r'[A-Z]?\d{1,3}면\s*\d+단')
+
+def fetch_print_info(title: str) -> str:
+    """
+    네이버 뉴스 검색 결과 페이지를 크롤링해서 지면 정보 추출.
+    검색 결과의 기사 메타 영역에서 'XX면 X단' 패턴을 찾아 반환.
+    """
+    try:
+        search_url = (
+            f"https://search.naver.com/search.naver"
+            f"?where=news&query={requests.utils.quote(title)}&sort=0"
+        )
+        res = requests.get(search_url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+        if res.status_code != 200:
+            return ""
+
+        soup = BeautifulSoup(res.text, 'html.parser')
+
+        # 검색 결과 각 기사 블록 순회
+        for block in soup.select('[class*="api_subject_bx"], [class*="news_area"], li.bx'):
+            text = block.get_text(separator=" ", strip=True)
+            m = PRINT_PATTERN.search(text)
+            if m:
+                return m.group(0).strip()   # 예: "A16면 1단"
+
+    except Exception:
+        pass
+    return ""
+
 def fetch_naver_article_info(link: str) -> dict:
-    result = {"publisher": publisher_from_url(link), "pick": "", "print": ""}
+    result = {"publisher": publisher_from_url(link), "pick": ""}
     if "naver.com" not in link:
         return result
     try:
@@ -242,44 +275,7 @@ def fetch_naver_article_info(link: str) -> dict:
         elif "PICK" in res.text:
             result["pick"] = "PICK"
 
-        # ── 지면 여부 (정밀 감지) ─────────────────────────────
-        # 네이버 지면기사 전용 마커만 체크 (관련기사 영역 오탐 방지)
-        is_print = False
 
-        # 방법 A: 지면기사 전용 배지 태그
-        # - .media_end_head_info_datestamp 안의 "지면기사" em/span
-        # - .article_info 영역 내 지면 표시
-        badge = soup.select_one(
-            '.media_end_head_info_datestamp em, '
-            '.article_info .article_info_paper, '
-            '.article_info em.article_paper'
-        )
-        if badge and "지면" in badge.get_text():
-            is_print = True
-
-        # 방법 B: <meta> 태그에서 지면 여부 확인
-        # og:article:section 또는 네이버 전용 메타에 "지면" 포함 여부
-        if not is_print:
-            for meta in soup.find_all('meta'):
-                name = meta.get('name', '') + meta.get('property', '')
-                val  = meta.get('content', '')
-                if 'section' in name.lower() and '지면' in val:
-                    is_print = True
-                    break
-
-        # 방법 C: 기사 본문 영역(#dic_area, #articeBody) 직전의
-        # 헤더 영역에서만 "지면기사" 텍스트 탐색 (관련기사 영역 제외)
-        if not is_print:
-            header_area = soup.select_one(
-                '.media_end_head_info, '
-                '.article_head_info, '
-                '#articleBodyContents + .article_info, '
-                '.news_headline'
-            )
-            if header_area and "지면기사" in header_area.get_text():
-                is_print = True
-
-        result["print"] = "지면" if is_print else ""
 
     except Exception:
         pass
@@ -408,8 +404,7 @@ def run_search(query: str, client_id: str, client_secret: str,
             except Exception:
                 crawl_results[idx] = {
                     "publisher": publisher_from_url(raw_items[idx]["link"]),
-                    "pick": "",
-                    "print": ""
+                    "pick": ""
                 }
             done += 1
             pct = 20 + int(done / total * 70)   # 20~90% 구간
@@ -420,6 +415,25 @@ def run_search(query: str, client_id: str, client_secret: str,
     status_text.text("📊 데이터 정리 중...")
     progress_bar.progress(95)
 
+    # ── Step 3-1: 지면 정보 병렬 수집 ──────────────────────────
+    status_text.text("🗞️ 지면 정보 수집 중...")
+    print_results = {}
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        future_to_idx2 = {
+            executor.submit(fetch_print_info, item["title"]): idx
+            for idx, item in enumerate(raw_items)
+        }
+        done2 = 0
+        for future in as_completed(future_to_idx2):
+            idx = future_to_idx2[future]
+            try:
+                print_results[idx] = future.result()
+            except Exception:
+                print_results[idx] = ""
+            done2 += 1
+            pct2 = 95 + int(done2 / total * 4)   # 95~99% 구간
+            progress_bar.progress(min(pct2, 99))
+
     news_data = []
     for idx, item in enumerate(raw_items):
         info      = crawl_results.get(idx, {})
@@ -428,6 +442,7 @@ def run_search(query: str, client_id: str, client_secret: str,
         group_val = GROUP_MAP.get(publisher, "")
         link      = item["link"]
         title     = item["title"].replace('"', "'")
+        print_val = print_results.get(idx, "")
 
         news_data.append({
             "그룹":   group_val,
@@ -436,7 +451,7 @@ def run_search(query: str, client_id: str, client_secret: str,
             "제목_표시": title,   # 화면 표시용 (수식 없는 버전)
             "링크":   link,
             "PICK":   pick_val,
-            "지면":   info.get("print", ""),
+            "지면":   print_val,
             "게시일": item["pub_date"].strftime('%Y-%m-%d %H:%M'),
         })
 
