@@ -104,7 +104,7 @@ FIXED_MAP = {
     "sisaon": "시사온", "smarttoday": "스마트투데이", "ziksir": "직썰",
     "job-post": "잡포스트", "issuenbiz": "이슈앤비즈", "fashionn": "패션엔",
     "thebell": "더벨", "ftoday": "파이낸셜투데이", "newspost": "뉴스포스트",
-    "econonews": "이코노뉴스", "thevaluenews": "더밸류뉴스", "megaeconomy": "메가경제", "greened": "녹색경제신문", "sisajounal-e": "시사저널이코노미", "digitaltoday": "디지털투데이"
+    "econonews": "이코노뉴스", "thevaluenews": "더밸류뉴스", "megaeconomy": "메가경제", "greened": "녹색경제신문", "sisajournal-e": "시사저널이코노미", "digitaltoday": "디지털투데이"
 }
 
 OID_MAP = {
@@ -452,7 +452,7 @@ with st.sidebar:
     st.caption("미분류 매체는 흰색으로 표시됩니다.")
     st.divider()
     st.markdown("**수집 기간**")
-    days = st.slider("최근 며칠 기사", min_value=1, max_value=7, value=7, step=1,
+    days = st.slider("기사 게재일 기준", min_value=1, max_value=7, value=7, step=1,
                      format="%d일")
 
 # ── 메인: 검색 입력 ───────────────────────────────────────────
