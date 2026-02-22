@@ -214,36 +214,6 @@ def publisher_from_url(link: str) -> str:
 
 
 
-# ── 지면 정보 패턴 (예: "A16면 1단", "18면 1단", "B3면 3단") ──
-PRINT_PATTERN = re.compile(r'[A-Z]?\d{1,3}면\s*\d+단')
-
-def fetch_print_info(title: str) -> str:
-    """
-    네이버 뉴스 검색 결과 페이지를 크롤링해서 지면 정보 추출.
-    검색 결과의 기사 메타 영역에서 'XX면 X단' 패턴을 찾아 반환.
-    """
-    try:
-        search_url = (
-            f"https://search.naver.com/search.naver"
-            f"?where=news&query={requests.utils.quote(title)}&sort=0"
-        )
-        res = requests.get(search_url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
-        if res.status_code != 200:
-            return ""
-
-        soup = BeautifulSoup(res.text, 'html.parser')
-
-        # 검색 결과 각 기사 블록 순회
-        for block in soup.select('[class*="api_subject_bx"], [class*="news_area"], li.bx'):
-            text = block.get_text(separator=" ", strip=True)
-            m = PRINT_PATTERN.search(text)
-            if m:
-                return m.group(0).strip()   # 예: "A16면 1단"
-
-    except Exception:
-        pass
-    return ""
-
 def fetch_naver_article_info(link: str) -> dict:
     result = {"publisher": publisher_from_url(link), "pick": ""}
     if "naver.com" not in link:
@@ -297,7 +267,7 @@ def build_excel(df: pd.DataFrame) -> bytes:
         for col_num, col_name in enumerate(df.columns):
             worksheet.write(0, col_num, col_name, header_fmt)
 
-        col_widths = {"그룹": 8, "매체명": 16, "제목": 60, "PICK": 6, "지면": 6, "게시일": 18}
+        col_widths = {"그룹": 8, "매체명": 16, "제목": 60, "PICK": 6, "게시일": 18}
         for col_num, col_name in enumerate(df.columns):
             worksheet.set_column(col_num, col_num, col_widths.get(col_name, 12))
 
@@ -372,10 +342,6 @@ def run_search(query: str, client_id: str, client_secret: str,
                     "link": item.get('link', ''),
                     "title": clean_html_text(item.get('title', '')),
                 })
-                # ── 디버그: 첫 번째 기사 API 응답 전체 출력 ──
-                if len(raw_items) == 1:
-                    st.warning("🔍 [디버그] 첫 번째 기사 API 응답 원문")
-                    st.json(item)
             if stop_early:
                 break
             time.sleep(0.2)
@@ -419,25 +385,6 @@ def run_search(query: str, client_id: str, client_secret: str,
     status_text.text("📊 데이터 정리 중...")
     progress_bar.progress(95)
 
-    # ── Step 3-1: 지면 정보 병렬 수집 ──────────────────────────
-    status_text.text("🗞️ 지면 정보 수집 중...")
-    print_results = {}
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        future_to_idx2 = {
-            executor.submit(fetch_print_info, item["title"]): idx
-            for idx, item in enumerate(raw_items)
-        }
-        done2 = 0
-        for future in as_completed(future_to_idx2):
-            idx = future_to_idx2[future]
-            try:
-                print_results[idx] = future.result()
-            except Exception:
-                print_results[idx] = ""
-            done2 += 1
-            pct2 = 95 + int(done2 / total * 4)   # 95~99% 구간
-            progress_bar.progress(min(pct2, 99))
-
     news_data = []
     for idx, item in enumerate(raw_items):
         info      = crawl_results.get(idx, {})
@@ -446,8 +393,6 @@ def run_search(query: str, client_id: str, client_secret: str,
         group_val = GROUP_MAP.get(publisher, "")
         link      = item["link"]
         title     = item["title"].replace('"', "'")
-        print_val = print_results.get(idx, "")
-
         news_data.append({
             "그룹":   group_val,
             "매체명": publisher,
@@ -455,7 +400,6 @@ def run_search(query: str, client_id: str, client_secret: str,
             "제목_표시": title,   # 화면 표시용 (수식 없는 버전)
             "링크":   link,
             "PICK":   pick_val,
-            "지면":   print_val,
             "게시일": item["pub_date"].strftime('%Y-%m-%d %H:%M'),
         })
 
@@ -549,15 +493,13 @@ if "df" in st.session_state:
     cnt_etc = (df["그룹"] == "").sum()
     cnt_pick = (df["PICK"] == "PICK").sum()
 
-    cnt_print = (df["지면"] == "지면").sum()
-    m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("전체", f"{total}건")
     m2.metric("그룹 A", f"{cnt_a}건")
     m3.metric("그룹 B", f"{cnt_b}건")
     m4.metric("그룹 C", f"{cnt_c}건")
     m5.metric("미분류", f"{cnt_etc}건")
     m6.metric("PICK", f"{cnt_pick}건")
-    m7.metric("지면", f"{cnt_print}건")
 
     st.divider()
 
@@ -597,7 +539,6 @@ if "df" in st.session_state:
             badge_style = GROUP_BADGE.get(group, GROUP_BADGE[""])
             badge     = f'<span style="{badge_style}">{group if group else "미분류"}</span>'
             pick_html  = '<span style="color:#e74c3c;font-weight:bold;">PICK</span>' if row["PICK"] == "PICK" else ""
-            print_html = '<span style="color:#5b6bab;font-weight:bold;">지면</span>' if row["지면"] == "지면" else ""
             title_html = f'<a href="{row["링크"]}" target="_blank" style="text-decoration:none;color:#1a73e8;">{row["제목_표시"]}</a>'
             row_bg = GROUP_COLORS.get(group, "#FFFFFF")
             rows_html += f"""
@@ -606,7 +547,6 @@ if "df" in st.session_state:
                 <td style="padding:6px 10px;border-bottom:1px solid #eee;white-space:nowrap;font-weight:500;">{row["매체명"]}</td>
                 <td style="padding:6px 10px;border-bottom:1px solid #eee;">{title_html}</td>
                 <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center;">{pick_html}</td>
-                <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center;">{print_html}</td>
                 <td style="padding:6px 10px;border-bottom:1px solid #eee;white-space:nowrap;color:#666;font-size:0.85em;">{row["게시일"]}</td>
             </tr>"""
 
@@ -621,7 +561,7 @@ if "df" in st.session_state:
         <table class="clip-table">
             <thead>
                 <tr>
-                    <th>그룹</th><th>매체명</th><th>제목</th><th>PICK</th><th>지면</th><th>게시일</th>
+                    <th>그룹</th><th>매체명</th><th>제목</th><th>PICK</th><th>게시일</th>
                 </tr>
             </thead>
             <tbody>{rows_html}</tbody>
@@ -633,7 +573,7 @@ if "df" in st.session_state:
     # ── 엑셀 다운로드 ─────────────────────────────────────────
     st.divider()
     # 엑셀용 df (제목_표시, 링크 컬럼 제거, 제목은 HYPERLINK 수식 유지)
-    df_excel = df_filtered[["그룹", "매체명", "제목", "PICK", "지면", "게시일"]].reset_index(drop=True)
+    df_excel = df_filtered[["그룹", "매체명", "제목", "PICK", "게시일"]].reset_index(drop=True)
     excel_bytes = build_excel(df_excel)
     file_name   = f"naver_news_{query}_{now.strftime('%Y%m%d_%H%M%S')}.xlsx"
 
