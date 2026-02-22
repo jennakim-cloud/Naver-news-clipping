@@ -375,7 +375,8 @@ def run_search(query: str, client_id: str, client_secret: str,
             if stop_early:
                 break
             time.sleep(0.2)
-
+if len(raw_items) == 1:  # 첫 번째 기사만
+    st.write(item)       # API 응답 전체 출력
         except Exception as e:
             st.error(f"API 요청 오류: {e}")
             return None
@@ -641,6 +642,3 @@ if "df" in st.session_state:
         use_container_width=True,
         type="primary",
     )
-# API 수집 루프 안, raw_items.append 바로 위에 임시 추가
-if len(raw_items) == 0:  # 첫 번째 기사만
-    st.code(str(item))   # API 응답 전체 출력
