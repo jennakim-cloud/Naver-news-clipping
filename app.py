@@ -641,3 +641,6 @@ if "df" in st.session_state:
         use_container_width=True,
         type="primary",
     )
+# API 수집 루프 안, raw_items.append 바로 위에 임시 추가
+if len(raw_items) == 0:  # 첫 번째 기사만
+    st.code(str(item))   # API 응답 전체 출력
