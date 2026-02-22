@@ -421,21 +421,25 @@ st.set_page_config(
 st.title("📰 네이버 뉴스 클리핑")
 st.caption("키워드로 최근 7일 기사를 수집하고 엑셀로 다운로드합니다.")
 
-# ── 사이드바: API 키 입력 ──────────────────────────────────────
+# ── API 키: st.secrets 우선 → 없으면 환경변수 폴백 ──────────
+# Streamlit Cloud: 앱 Settings > Secrets 에 아래 내용 추가
+#   [naver]
+#   client_id     = "YOUR_CLIENT_ID"
+#   client_secret = "YOUR_CLIENT_SECRET"
+try:
+    client_id     = st.secrets["naver"]["client_id"]
+    client_secret = st.secrets["naver"]["client_secret"]
+except Exception:
+    import os
+    client_id     = os.environ.get("NAVER_CLIENT_ID", "")
+    client_secret = os.environ.get("NAVER_CLIENT_SECRET", "")
+
 with st.sidebar:
     st.header("⚙️ 설정")
-    client_id = st.text_input(
-        "네이버 Client ID",
-        value="_xwUpsu3wHgwgduYYY3H",
-        type="password",
-        help="네이버 개발자 센터에서 발급받은 Client ID"
-    )
-    client_secret = st.text_input(
-        "네이버 Client Secret",
-        value="zx1KJ7Gm1o",
-        type="password",
-        help="네이버 개발자 센터에서 발급받은 Client Secret"
-    )
+    if client_id and client_secret:
+        st.success("✅ API 키 연결됨", icon="🔑")
+    else:
+        st.error("❌ API 키 없음\n`Secrets` 설정을 확인하세요.")
     st.divider()
     st.markdown("**그룹 색상 기준**")
     st.markdown(
@@ -462,7 +466,7 @@ if search_clicked:
     if not query.strip():
         st.warning("검색어를 입력해주세요.")
     elif not client_id or not client_secret:
-        st.error("사이드바에서 네이버 API 키를 입력해주세요.")
+        st.error("API 키가 설정되지 않았습니다. Streamlit Secrets를 확인해주세요.")
     else:
         progress_bar = st.progress(0)
         status_text  = st.empty()
