@@ -299,7 +299,7 @@ def build_excel(df: pd.DataFrame) -> bytes:
 # ══════════════════════════════════════════════════════════════
 
 def run_search(query: str, client_id: str, client_secret: str,
-               progress_bar, status_text) -> pd.DataFrame | None:
+               progress_bar, status_text, days: int = 7) -> pd.DataFrame | None:
 
     naver_headers = {
         "X-Naver-Client-Id": client_id,
@@ -307,7 +307,7 @@ def run_search(query: str, client_id: str, client_secret: str,
     }
     kst = timezone(timedelta(hours=9))
     now = datetime.now(kst)
-    seven_days_ago = now - timedelta(days=7)
+    since = now - timedelta(days=days)
 
     # ── Step 1: API 수집 ──────────────────────────────────────
     raw_items = []
@@ -334,7 +334,7 @@ def run_search(query: str, client_id: str, client_secret: str,
                 pub_date = datetime.strptime(
                     item['pubDate'], '%a, %d %b %Y %H:%M:%S +0900'
                 ).replace(tzinfo=kst)
-                if pub_date < seven_days_ago:
+                if pub_date < since:
                     stop_early = True
                     break
                 raw_items.append({
@@ -419,7 +419,7 @@ st.set_page_config(
 )
 
 st.title("📰 네이버 뉴스 클리핑")
-st.caption("키워드로 최근 7일 기사를 수집하고 엑셀로 다운로드합니다.")
+st.caption("키워드로 원하는 기간의 기사를 수집하고 엑셀로 다운로드합니다.")
 
 # ── API 키: st.secrets 우선 → 없으면 환경변수 폴백 ──────────
 # Streamlit Cloud: 앱 Settings > Secrets 에 아래 내용 추가
@@ -449,6 +449,10 @@ with st.sidebar:
         unsafe_allow_html=True
     )
     st.caption("미분류 매체는 흰색으로 표시됩니다.")
+    st.divider()
+    st.markdown("**수집 기간**")
+    days = st.slider("최근 며칠 기사", min_value=1, max_value=7, value=7, step=1,
+                     format="%d일")
 
 # ── 메인: 검색 입력 ───────────────────────────────────────────
 col_input, col_btn = st.columns([4, 1])
@@ -472,12 +476,13 @@ if search_clicked:
         status_text  = st.empty()
 
         df = run_search(query.strip(), client_id, client_secret,
-                        progress_bar, status_text)
+                        progress_bar, status_text, days)
 
         if df is not None and not df.empty:
             # 세션에 저장 (그룹 필터링 등 후속 조작을 위해)
             st.session_state["df"]    = df
             st.session_state["query"] = query.strip()
+            st.session_state["days"]  = days
 
 # ── 결과 표시 ─────────────────────────────────────────────────
 if "df" in st.session_state:
