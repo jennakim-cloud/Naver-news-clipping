@@ -71,7 +71,7 @@ FIXED_MAP = {
     "startuptoday": "스타트업투데이",
     "straightnews": "스트레이트뉴스",
     "tfmedia": "조세금융신문",
-    "weekly": "CNB저널",
+    "weekly": "주간한국",
     "wolyo": "월요신문",
     "womaneconomy": "여성경제신문",
     "lawissue": "로이슈", "newsworker": "뉴스워커", "topdaily": "톱데일리",
@@ -103,7 +103,8 @@ FIXED_MAP = {
     "shinailbo": "신아일보", "pinpointnews": "핀포인트뉴스", "sisunnews": "시선뉴스",
     "sisaon": "시사온", "smarttoday": "스마트투데이", "ziksir": "직썰",
     "job-post": "잡포스트", "issuenbiz": "이슈앤비즈", "fashionn": "패션엔",
-    "econonews": "이코노뉴스",
+    "THEBELL": "더벨", "FTODAY": "파이낸셜투데이", "NEWSPOST": "뉴스포스트", 
+    "econonews": "이코노뉴스", "THEVALUENEWS": "더밸류뉴스", "MEGAECONOMY": "메가경제", "GREENED": "녹색경제신문", "SISAJOURNAL-E": "시사저널이코노미", "DIGITALTODAY": "디지털투데이" 
 }
 
 OID_MAP = {
@@ -129,7 +130,7 @@ OID_MAP = {
 }
 
 GROUP_MAP = {
-    "1코노미뉴스":"그룹 B","CBS노컷뉴스":"그룹 A","CEO 스코어데일리":"그룹 C",
+    "1코노미뉴스":"그룹 B","CBS노컷뉴스":"그룹 A","CEO스코어데일리":"그룹 C",
     "EBN":"그룹 B","FETV":"그룹 C","IT조선":"그룹 C","KBS":"그룹 A",
     "K패션뉴스":"그룹 C","MBC":"그룹 A","MBN":"그룹 A","S-저널":"그룹 C",
     "SBS":"그룹 A","SBS Biz":"그룹 A","SR타임스":"그룹 C","TV조선":"그룹 A",
