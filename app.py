@@ -92,7 +92,7 @@ FIXED_MAP = {
     "viva100": "브릿지경제", "srtimes": "SR타임스", "kpenews": "한국정경신문",
     "news2day": "뉴스투데이", "fashionbiz": "패션비즈", "econovill": "이코노믹리뷰",
     "businessplus": "비즈니스플러스", "newspim": "뉴스핌", "m-i": "매일일보",
-    "pointdaily": "포인트데일리", "ajunews": "아주경제", "asiatoday": "아시아투데이", "youthdaily": "청년일보",
+    "pointdaily": "포인트데일리", "ajunews": "아주경제", "asiatoday": "아시아투데이", "xportsnews": "엑스포츠뉴스", "sports": "엑스포츠뉴스", "youthdaily": "청년일보",
     "seoulwire": "서울와이어", "newstomato": "뉴스토마토", "widedaily": "와이드경제",
     "apparelnews": "어패럴뉴스", "biztribune": "비즈트리뷴", "etoday": "이투데이",
     "ngetnews": "뉴스저널리즘", "hansbiz": "한스경제", "byline": "바이라인네트워크",
@@ -178,7 +178,7 @@ GROUP_MAP = {
     "한경비즈니스":"그룹 B","한국경제":"그룹 A","한국경제TV":"그룹 A",
     "한국금융신문":"그룹 C","한국면세뉴스":"그룹 C","한국섬유신문":"그룹 A",
     "한국일보":"그룹 A","한국정경신문":"그룹 C","한스경제":"그룹 B","허프포스트":"그룹 C",
-    "헤럴드경제":"그룹 A","현대경제신문":"그룹 C","후지TV":"그룹 C",
+    "헤럴드경제":"그룹 A","현대경제신문":"그룹 C","후지TV":"그룹 C","MTN":"그룹 A",
 }
 
 
