@@ -103,8 +103,8 @@ FIXED_MAP = {
     "shinailbo": "신아일보", "pinpointnews": "핀포인트뉴스", "sisunnews": "시선뉴스",
     "sisaon": "시사온", "smarttoday": "스마트투데이", "ziksir": "직썰",
     "job-post": "잡포스트", "issuenbiz": "이슈앤비즈", "fashionn": "패션엔",
-    "THEBELL": "더벨", "FTODAY": "파이낸셜투데이", "NEWSPOST": "뉴스포스트", 
-    "econonews": "이코노뉴스", "THEVALUENEWS": "더밸류뉴스", "MEGAECONOMY": "메가경제", "GREENED": "녹색경제신문", "SISAJOURNAL-E": "시사저널이코노미", "DIGITALTODAY": "디지털투데이" 
+    "thebell": "더벨", "ftoday": "파이낸셜투데이", "newspost": "뉴스포스트",
+    "econonews": "이코노뉴스", "thevaluenews": "더밸류뉴스", "megaeconomy": "메가경제", "greened": "녹색경제신문", "sisajounal-e": "시사저널이코노미", "digitaltoday": "디지털투데이"
 }
 
 OID_MAP = {
