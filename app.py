@@ -372,11 +372,14 @@ def run_search(query: str, client_id: str, client_secret: str,
                     "link": item.get('link', ''),
                     "title": clean_html_text(item.get('title', '')),
                 })
+                # ── 디버그: 첫 번째 기사 API 응답 전체 출력 ──
+                if len(raw_items) == 1:
+                    st.warning("🔍 [디버그] 첫 번째 기사 API 응답 원문")
+                    st.json(item)
             if stop_early:
                 break
             time.sleep(0.2)
-if len(raw_items) == 1:  # 첫 번째 기사만
-    st.write(item)       # API 응답 전체 출력
+
         except Exception as e:
             st.error(f"API 요청 오류: {e}")
             return None
