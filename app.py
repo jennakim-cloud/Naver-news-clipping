@@ -88,7 +88,7 @@ FIXED_MAP = {
     "dizzotv": "디지틀조선일보", "cstimes": "컨슈머타임스",
     "consumernews": "소비자가만드는신문", "ceoscoredaily": "CEO스코어데일리",
     "breaknews": "브레이크뉴스", "bizwnews": "비즈월드", "beyondpost": "비욘드포스트",
-    "asiatime": "아시아타임즈", "apnews": "아시아에이", "newdaily": "뉴데일리",
+    "asiatime": "아시아타임즈", "apnews": "아시아에이", "biz": "패션비즈",
     "viva100": "브릿지경제", "srtimes": "SR타임스", "kpenews": "한국정경신문",
     "news2day": "뉴스투데이", "fashionbiz": "패션비즈", "econovill": "이코노믹리뷰",
     "businessplus": "비즈니스플러스", "newspim": "뉴스핌", "m-i": "매일일보",
@@ -252,6 +252,178 @@ def fetch_naver_article_info(link: str) -> dict:
         pass
     return result
 
+
+
+# ══════════════════════════════════════════════════════════════
+#  외부 매체 크롤러 (네이버 미등록 4개 매체)
+# ══════════════════════════════════════════════════════════════
+
+def crawl_fi(query: str, since: datetime) -> list:
+    """패션인사이트 fi.co.kr 크롤링"""
+    results = []
+    try:
+        search_url = f"https://www.fi.co.kr/main/list.asp?search={requests.utils.quote(query)}"
+        res = requests.get(search_url, headers=HEADERS, timeout=8)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        for a in soup.select('a[href*="view.asp"]'):
+            title = a.get_text(strip=True)
+            if not title or len(title) < 5:
+                continue
+            href = a['href']
+            if not href.startswith('http'):
+                href = 'https://www.fi.co.kr' + ('' if href.startswith('/') else '/main/') + href.lstrip('/')
+            # 날짜: 상위 태그에서 탐색
+            parent = a.find_parent(['li', 'div', 'tr'])
+            date_txt = ''
+            if parent:
+                import re as _re
+                m = _re.search(r'(\d{4})[.\-/](\d{2})[.\-/](\d{2})', parent.get_text())
+                if m:
+                    date_txt = f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+            pub_date = None
+            if date_txt:
+                try:
+                    pub_date = datetime.strptime(date_txt, '%Y-%m-%d').replace(
+                        tzinfo=timezone(timedelta(hours=9)))
+                except Exception:
+                    pass
+            if pub_date and pub_date < since:
+                continue
+            results.append({
+                "그룹": "그룹 A", "매체명": "패션인사이트",
+                "제목": f'=HYPERLINK("{href}", "{title}")',
+                "제목_표시": title, "링크": href,
+                "PICK": "",
+                "게시일": pub_date.strftime('%Y-%m-%d') if pub_date else "",
+            })
+    except Exception:
+        pass
+    return results
+
+
+def crawl_itnk(query: str, since: datetime) -> list:
+    """국제섬유신문 itnk.co.kr 크롤링"""
+    results = []
+    try:
+        search_url = f"https://www.itnk.co.kr/news/articleList.html?sc_word={requests.utils.quote(query)}&view_type=sm"
+        res = requests.get(search_url, headers=HEADERS, timeout=8)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        import re as _re
+        for item in soup.select('li.item, div.item, .article-list li'):
+            a = item.find('a', href=True)
+            if not a:
+                continue
+            title = a.get_text(strip=True)
+            if not title or len(title) < 5:
+                continue
+            href = a['href']
+            if not href.startswith('http'):
+                href = 'https://www.itnk.co.kr' + href
+            m = _re.search(r'(\d{4})[.\-/](\d{2})[.\-/](\d{2})', item.get_text())
+            pub_date = None
+            if m:
+                try:
+                    pub_date = datetime.strptime(f"{m.group(1)}-{m.group(2)}-{m.group(3)}", '%Y-%m-%d').replace(
+                        tzinfo=timezone(timedelta(hours=9)))
+                except Exception:
+                    pass
+            if pub_date and pub_date < since:
+                continue
+            results.append({
+                "그룹": "그룹 A", "매체명": "국제섬유신문",
+                "제목": f'=HYPERLINK("{href}", "{title}")',
+                "제목_표시": title, "링크": href,
+                "PICK": "",
+                "게시일": pub_date.strftime('%Y-%m-%d') if pub_date else "",
+            })
+    except Exception:
+        pass
+    return results
+
+
+def crawl_fpost(query: str, since: datetime) -> list:
+    """패션포스트 fpost.co.kr 크롤링"""
+    results = []
+    try:
+        import re as _re
+        search_url = f"https://fpost.co.kr/board/bbs/search.php?bo_table=mainFsp&sfl=wr_subject%2Cwr_content&stx={requests.utils.quote(query)}"
+        res = requests.get(search_url, headers=HEADERS, timeout=8)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        for a in soup.select('a[href*="bo_table=mainFsp"]'):
+            title = a.get_text(strip=True)
+            if not title or len(title) < 5:
+                continue
+            href = a['href']
+            if not href.startswith('http'):
+                href = 'https://fpost.co.kr' + href
+            parent = a.find_parent(['li', 'div', 'tr', 'td'])
+            pub_date = None
+            if parent:
+                m = _re.search(r'(\d{4})[.\-/](\d{2})[.\-/](\d{2})', parent.get_text())
+                if m:
+                    try:
+                        pub_date = datetime.strptime(f"{m.group(1)}-{m.group(2)}-{m.group(3)}", '%Y-%m-%d').replace(
+                            tzinfo=timezone(timedelta(hours=9)))
+                    except Exception:
+                        pass
+            if pub_date and pub_date < since:
+                continue
+            results.append({
+                "그룹": "그룹 A", "매체명": "패션포스트",
+                "제목": f'=HYPERLINK("{href}", "{title}")',
+                "제목_표시": title, "링크": href,
+                "PICK": "",
+                "게시일": pub_date.strftime('%Y-%m-%d') if pub_date else "",
+            })
+    except Exception:
+        pass
+    return results
+
+
+def crawl_tnnews(query: str, since: datetime) -> list:
+    """테넌트뉴스 tnnews.co.kr 크롤링"""
+    results = []
+    try:
+        import re as _re
+        search_url = f"https://tnnews.co.kr/?s={requests.utils.quote(query)}"
+        res = requests.get(search_url, headers=HEADERS, timeout=8)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        for item in soup.select('div.item-details, div.td-module-meta-info'):
+            a = item.find('a', href=True)
+            if not a:
+                continue
+            title = a.get_text(strip=True)
+            if not title or len(title) < 5:
+                continue
+            href = a['href']
+            m = _re.search(r'(\d{4})[.\-/](\d{2})[.\-/](\d{2})', item.get_text())
+            pub_date = None
+            if m:
+                try:
+                    pub_date = datetime.strptime(f"{m.group(1)}-{m.group(2)}-{m.group(3)}", '%Y-%m-%d').replace(
+                        tzinfo=timezone(timedelta(hours=9)))
+                except Exception:
+                    pass
+            if pub_date and pub_date < since:
+                continue
+            results.append({
+                "그룹": "그룹 A", "매체명": "테넌트뉴스",
+                "제목": f'=HYPERLINK("{href}", "{title}")',
+                "제목_표시": title, "링크": href,
+                "PICK": "",
+                "게시일": pub_date.strftime('%Y-%m-%d') if pub_date else "",
+            })
+    except Exception:
+        pass
+    return results
+
+
+EXTRA_CRAWLERS = {
+    "패션인사이트": crawl_fi,
+    "국제섬유신문": crawl_itnk,
+    "패션포스트":   crawl_fpost,
+    "테넌트뉴스":   crawl_tnnews,
+}
 
 def build_excel(df: pd.DataFrame) -> bytes:
     """DataFrame → 서식 적용 엑셀 바이트 반환"""
@@ -454,6 +626,12 @@ with st.sidebar:
     st.markdown("**수집 기간**")
     days = st.slider("기사 게재일 기준", min_value=1, max_value=7, value=7, step=1,
                      format="%d일")
+    st.divider()
+    st.markdown("**추가 매체 수집** (네이버 미등록)")
+    extra_fi    = st.checkbox("패션인사이트", value=True)
+    extra_itnk  = st.checkbox("국제섬유신문", value=True)
+    extra_fpost = st.checkbox("패션포스트",   value=True)
+    extra_tn    = st.checkbox("테넌트뉴스",   value=True)
 
 # ── 메인: 검색 입력 ───────────────────────────────────────────
 col_input, col_btn = st.columns([4, 1])
@@ -480,6 +658,26 @@ if search_clicked:
                         progress_bar, status_text, days)
 
         if df is not None and not df.empty:
+            # ── 외부 매체 크롤링 병합 ─────────────────────────
+            kst_now  = datetime.now(timezone(timedelta(hours=9)))
+            since_dt = kst_now - timedelta(days=days)
+            extra_rows = []
+            selected_extras = {
+                "패션인사이트": extra_fi,
+                "국제섬유신문": extra_itnk,
+                "패션포스트":   extra_fpost,
+                "테넌트뉴스":   extra_tn,
+            }
+            for name, enabled in selected_extras.items():
+                if enabled:
+                    status_text.text(f"🔍 {name} 크롤링 중...")
+                    rows = EXTRA_CRAWLERS[name](query.strip(), since_dt)
+                    extra_rows.extend(rows)
+
+            if extra_rows:
+                df_extra = pd.DataFrame(extra_rows)
+                df = pd.concat([df, df_extra], ignore_index=True)
+
             # 세션에 저장 (그룹 필터링 등 후속 조작을 위해)
             st.session_state["df"]    = df
             st.session_state["query"] = query.strip()
