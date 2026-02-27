@@ -88,7 +88,7 @@ FIXED_MAP = {
     "dizzotv": "디지틀조선일보", "cstimes": "컨슈머타임스",
     "consumernews": "소비자가만드는신문", "ceoscoredaily": "CEO스코어데일리",
     "breaknews": "브레이크뉴스", "bizwnews": "비즈월드", "beyondpost": "비욘드포스트",
-    "asiatime": "아시아타임즈", "apnews": "아시아에이", "biz": "패션비즈",
+    "asiatime": "아시아타임즈", "apnews": "아시아에이", "newdaily": "뉴데일리",
     "viva100": "브릿지경제", "srtimes": "SR타임스", "kpenews": "한국정경신문",
     "news2day": "뉴스투데이", "fashionbiz": "패션비즈", "econovill": "이코노믹리뷰",
     "businessplus": "비즈니스플러스", "newspim": "뉴스핌", "m-i": "매일일보",
