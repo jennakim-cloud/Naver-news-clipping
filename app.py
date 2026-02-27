@@ -724,6 +724,22 @@ if "df" in st.session_state:
     with filter_col3:
         keyword_filter = st.text_input("제목 키워드 필터", placeholder="추가 필터...")
 
+    # 정렬 컨트롤
+    sort_col1, sort_col2 = st.columns([2, 2])
+    with sort_col1:
+        sort_by = st.selectbox(
+            "정렬 기준",
+            options=["게시일", "그룹", "매체명", "제목"],
+            index=0,
+        )
+    with sort_col2:
+        sort_order = st.radio(
+            "정렬 방향",
+            options=["내림차순 ↓", "오름차순 ↑"],
+            horizontal=True,
+            index=0,
+        )
+
     # 필터 적용
     mask = pd.Series([True] * len(df), index=df.index)
 
@@ -737,6 +753,14 @@ if "df" in st.session_state:
         mask &= df["제목_표시"].str.contains(keyword_filter.strip(), case=False, na=False)
 
     df_filtered = df[mask].reset_index(drop=True)
+
+    # 정렬 적용
+    sort_col_map = {"게시일": "게시일", "그룹": "그룹", "매체명": "매체명", "제목": "제목_표시"}
+    ascending = (sort_order == "오름차순 ↑")
+    df_filtered = df_filtered.sort_values(
+        by=sort_col_map[sort_by], ascending=ascending
+    ).reset_index(drop=True)
+
     st.caption(f"필터 결과: {len(df_filtered)}건")
 
     # ── 테이블 렌더링 (HTML) ──────────────────────────────────
