@@ -637,7 +637,7 @@ SECTIONS = [
         "하고하우스", "LF", "신세계 인터내셔날", "삼성물산 패션", "F&F", "영원무역", "한섬", "이랜드",
     ]),
     ("유통 업계", [
-        "쿠팡", "컬리", "백화점", "유통업계", "이커머스", "공정위", "올리브영",
+        "쿠팡", "컬리", "백화점", "유통업계", "공정위", "올리브영",
     ]),
     ("IT 업계", [
         "네이버", "카카오", "토스", "배달앱", "온플법",
@@ -695,8 +695,10 @@ def collect_section(section_name: str, keywords: list, days: int) -> list:
                 title       = clean_html_text(item.get("title", ""))
                 description = clean_html_text(item.get("description", ""))
                 publisher   = publisher_from_url(link)
-                # 그룹 A/B/C 매체만 수집 (미분류 제외)
+                # 그룹 A/B/C 매체만 수집 (미분류 제외), 특정 매체 제외
                 if GROUP_MAP.get(publisher, "") == "":
+                    continue
+                if publisher == "중앙이코노미뉴스":
                     continue
                 items.append({
                     "섹션":        section_name,
@@ -718,7 +720,7 @@ def collect_section(section_name: str, keywords: list, days: int) -> list:
 # ════════════════════════════════════════════════════════════
 
 st.title("📋 Daily News Clipping")
-st.caption("섹션별 주요 기사를 선택하고 요약을 추가해 데일리 클리핑을 완성합니다. 그룹 A~C 매체 기사만 수집합니다.")
+st.caption("섹션별 주요 기사를 선택하고 요약을 추가해 데일리 클리핑을 완성합니다.")
 
 with st.sidebar:
     st.header("⚙️ 설정")
@@ -870,7 +872,7 @@ if "daily_selected" in st.session_state:
 
                     clip_text_lines.append(f"* {title} ({media})")
                     if summary:
-                        clip_text_lines.append(f"   * {summary}")
+                        clip_text_lines.append(f"   {summary}")
 
                 clip_text_lines.append("")
 
