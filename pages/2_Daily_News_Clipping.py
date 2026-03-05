@@ -695,6 +695,9 @@ def collect_section(section_name: str, keywords: list, days: int) -> list:
                 title       = clean_html_text(item.get("title", ""))
                 description = clean_html_text(item.get("description", ""))
                 publisher   = publisher_from_url(link)
+                # 그룹 A/B/C 매체만 수집 (미분류 제외)
+                if GROUP_MAP.get(publisher, "") == "":
+                    continue
                 items.append({
                     "섹션":        section_name,
                     "매체명":      publisher,
@@ -715,7 +718,7 @@ def collect_section(section_name: str, keywords: list, days: int) -> list:
 # ════════════════════════════════════════════════════════════
 
 st.title("📋 Daily News Clipping")
-st.caption("섹션별 주요 기사를 선택하고 요약을 추가해 데일리 클리핑을 완성합니다.")
+st.caption("섹션별 주요 기사를 선택하고 요약을 추가해 데일리 클리핑을 완성합니다. 그룹 A~C 매체 기사만 수집합니다.")
 
 with st.sidebar:
     st.header("⚙️ 설정")
