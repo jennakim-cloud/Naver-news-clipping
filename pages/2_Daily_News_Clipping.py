@@ -637,6 +637,7 @@ SECTION_NOISE_FILTER = {
     "무신사": [],
 }
 
+# 수집 우선순위 (섹션 간 중복 시 앞 섹션이 우선권 가짐)
 SECTIONS = [
     ("무신사", [
         "무신사", "29CM", "MUSINSA",
@@ -656,6 +657,9 @@ SECTIONS = [
         "네이버", "카카오", "토스", "배달앱", "온플법",
     ]),
 ]
+
+# 화면 표시 순서 (수집 순서와 별개)
+DISPLAY_ORDER = ["무신사", "패션 업계", "유통 업계", "IT 업계", "패션 플랫폼"]
 
 # ════════════════════════════════════════════════════════════
 #  Streamlit 페이지 설정
@@ -733,9 +737,13 @@ def collect_section(section_name: str, keywords: list, days: int, global_seen: s
                         continue
                     if publisher == "중앙이코노미뉴스":
                         continue
-                    # 섹션별 노이즈 필터: 제목에 노이즈 단어 포함 시 제외
+                    # 노이즈 필터 1: 제목에 노이즈 단어 포함 시 제외
                     noise_words = SECTION_NOISE_FILTER.get(section_name, [])
                     if noise_words and any(nw in title for nw in noise_words):
+                        continue
+                    # 노이즈 필터 2: 제목에 키워드가 전혀 없으면 제외 (본문만 매칭된 기사 차단)
+                    kw_tokens = [t for kw in keywords for t in kw.split() if len(t) > 1]
+                    if kw_tokens and not any(t in title for t in kw_tokens):
                         continue
                     pick_val = ""  # PICK 크롤링 제거 (속도 우선)
                     items.append({
@@ -829,7 +837,7 @@ if "daily_items" in st.session_state:
 
     selected_all = {}
 
-    for sec_name, _ in SECTIONS:
+    for sec_name in DISPLAY_ORDER:
         items = all_items.get(sec_name, [])
         st.markdown(f"### ■ {sec_name}")
         if not items:
@@ -874,7 +882,7 @@ if "daily_selected" in st.session_state:
         st.subheader("✏️ 요약 입력 (선택사항)")
         st.caption("각 기사 아래 입력란에 한 줄 요약을 직접 입력하세요. 비워두면 요약 없이 클리핑됩니다.")
 
-        for sec_name, _ in SECTIONS:
+        for sec_name in DISPLAY_ORDER:
             items = selected_all.get(sec_name, [])
             if not items:
                 continue
@@ -914,7 +922,7 @@ if "daily_selected" in st.session_state:
 
             clip_text_lines = [today_str, ""]
 
-            for sec_name, _ in SECTIONS:
+            for sec_name in DISPLAY_ORDER:
                 items = selected_all.get(sec_name, [])
                 if not items:
                     continue
