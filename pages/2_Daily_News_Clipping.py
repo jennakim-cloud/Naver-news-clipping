@@ -672,15 +672,15 @@ except Exception:
     client_secret = os.environ.get("NAVER_CLIENT_SECRET", "")
 
 
-def collect_section(section_name: str, keywords: list, days: int) -> list:
-    """섹션별 기사 수집 — 키워드별 수집 후 링크 기준 중복 제거"""
+def collect_section(section_name: str, keywords: list, days: int, global_seen: set = None) -> list:
+    """섹션별 기사 수집 — 키워드별 수집 후 링크 기준 중복 제거 (섹션 간 포함)"""
     naver_headers = {
         "X-Naver-Client-Id": client_id,
         "X-Naver-Client-Secret": client_secret,
     }
     kst        = timezone(timedelta(hours=9))
     since      = datetime.now(kst) - timedelta(days=days)
-    seen_links = set()
+    seen_links = global_seen if global_seen is not None else set()
     items      = []
 
     for keyword in keywords:
@@ -706,11 +706,15 @@ def collect_section(section_name: str, keywords: list, days: int) -> list:
                         break
                     link         = item.get("link", "")
                     original_link = item.get("originallink", "")
-                    # 중복 체크: naver link 기준
+                    # 중복 체크: 섹션 내 + 섹션 간 (global_seen)
                     dedup_key = link or original_link
                     if dedup_key in seen_links:
                         continue
+                    if global_seen is not None and dedup_key in global_seen:
+                        continue
                     seen_links.add(dedup_key)
+                    if global_seen is not None:
+                        global_seen.add(dedup_key)
                     title       = clean_html_text(item.get("title", ""))
                     description = clean_html_text(item.get("description", ""))
                     # 매체명: naver link로 OID 추출 우선, 안 되면 originallink로 도메인 매핑
@@ -784,12 +788,13 @@ if st.button("🔍 기사 수집 시작", type="primary", use_container_width=Tr
         st.error("API 키를 확인해주세요.")
     else:
         all_items = {}
+        global_seen_links = set()  # 섹션 간 중복 제거용
         prog = st.progress(0)
         for i, (sec_name, _) in enumerate(SECTIONS):
             prog.progress(int((i / len(SECTIONS)) * 100))
             kws = custom_queries[sec_name]
             st.toast(f"수집 중: {sec_name} ({len(kws)}개 키워드)")
-            all_items[sec_name] = collect_section(sec_name, kws, days)
+            all_items[sec_name] = collect_section(sec_name, kws, days, global_seen_links)
         prog.progress(100)
         # 섹션별: 게시일 최신순 + 동일 날짜 내 그룹 A 우선 정렬
         from datetime import datetime as _dt
