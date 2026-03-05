@@ -831,10 +831,13 @@ if "daily_selected" in st.session_state:
             st.subheader("📄 데일리 뉴스 클리핑 미리보기")
 
             kst = timezone(timedelta(hours=9))
-            today_str = datetime.now(kst).strftime("%Y년 %m월 %d일")
-            st.markdown(f"**{today_str} 데일리 뉴스 클리핑**")
+            now_kst = datetime.now(kst)
+            weekdays = ["월", "화", "수", "목", "금", "토", "일"]
+            weekday = weekdays[now_kst.weekday()]
+            today_str = f"{now_kst.month}월 {now_kst.day}일({weekday}) 뉴스 클리핑 공유드립니다."
+            st.markdown(f"**{today_str}**")
 
-            clip_text_lines = [f"{today_str} 데일리 뉴스 클리핑", ""]
+            clip_text_lines = [today_str, ""]
 
             for sec_name, _ in SECTIONS:
                 items = selected_all.get(sec_name, [])
