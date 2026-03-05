@@ -791,21 +791,18 @@ if st.button("🔍 기사 수집 시작", type="primary", use_container_width=Tr
             st.toast(f"수집 중: {sec_name} ({len(kws)}개 키워드)")
             all_items[sec_name] = collect_section(sec_name, kws, days)
         prog.progress(100)
-        # 섹션별: PICK 우선 → 그룹 A 우선 → 게시일 최신순 정렬
+        # 섹션별: 게시일 최신순 + 동일 날짜 내 그룹 A 우선 정렬
+        from datetime import datetime as _dt
         GROUP_ORDER = {"그룹 A": 0, "그룹 B": 1, "그룹 C": 2, "": 3}
+        def _sort_key(x):
+            d = x.get("게시일", "0000-00-00")
+            try:
+                ts = -_dt.strptime(d, "%Y-%m-%d").timestamp()  # 날짜 내림차순
+            except Exception:
+                ts = 0
+            return (ts, GROUP_ORDER.get(x.get("그룹", ""), 3))
         for sec_name in all_items:
-            all_items[sec_name].sort(key=lambda x: (
-                0 if x.get("PICK") == "PICK" else 1,       # PICK 우선
-                GROUP_ORDER.get(x.get("그룹", ""), 3),      # 그룹 A → B → C
-                x.get("게시일", "") if x.get("게시일") else "0000-00-00",  # 최신순 (내림차순 별도)
-            ))
-            # 게시일만 내림차순 재정렬 (PICK·그룹 순위 유지하면서)
-            from itertools import groupby
-            sorted_items = []
-            keyfn = lambda x: (0 if x.get("PICK") == "PICK" else 1, GROUP_ORDER.get(x.get("그룹", ""), 3))
-            for _, grp_items in groupby(all_items[sec_name], key=keyfn):
-                sorted_items.extend(sorted(grp_items, key=lambda x: x.get("게시일", ""), reverse=True))
-            all_items[sec_name] = sorted_items
+            all_items[sec_name].sort(key=_sort_key)
         st.session_state["daily_items"] = all_items
         st.session_state.pop("daily_done", None)
         st.success("수집 완료! 아래에서 기사를 선택하세요.")
