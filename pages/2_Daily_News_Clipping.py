@@ -633,14 +633,17 @@ SECTIONS = [
         "무신사", "29CM", "MUSINSA",
     ]),
     ("패션 업계", [
-        "패션 업계", "유니클로", "패션 브랜드", "의류",
-        "하고하우스", "LF", "신세계 인터내셔날", "삼성물산 패션", "F&F", "영원무역", "한섬", "이랜드",
+        "패션 업계", "유니클로", "패션 브랜드",
+        "하고하우스", "LF패션", "LF 스타일", "신세계 인터내셔날", "삼성물산 패션",
+        "F&F 패션", "영원무역", "한섬", "이랜드 패션",
     ]),
     ("유통 업계", [
-        "쿠팡", "컬리", "백화점", "유통업계", "공정위", "올리브영",
+        "쿠팡 유통", "컬리", "백화점", "유통업계", "공정위",
+        "올리브영 뷰티", "올리브영 해외", "올리브영 신사업",
     ]),
     ("IT 업계", [
-        "네이버", "카카오", "토스", "배달앱", "온플법",
+        "네이버 서비스", "네이버 실적", "카카오 서비스", "카카오 실적",
+        "토스", "배달앱", "온플법",
     ]),
     ("패션 플랫폼", [
         "W컨셉", "에이블리", "지그재그", "네이버 크림", "차란", "패션 플랫폼", "명품 플랫폼",
@@ -674,44 +677,66 @@ def collect_section(section_name: str, keywords: list, days: int) -> list:
     items      = []
 
     for keyword in keywords:
-        try:
-            url = (
-                f"https://openapi.naver.com/v1/search/news.json"
-                f"?query={requests.utils.quote(keyword)}&display=100&start=1&sort=date"
-            )
-            res = requests.get(url, headers=naver_headers, timeout=10)
-            if res.status_code != 200:
-                continue
-            for item in res.json().get("items", []):
-                pub_date = datetime.strptime(
-                    item["pubDate"], "%a, %d %b %Y %H:%M:%S +0900"
-                ).replace(tzinfo=kst)
-                if pub_date < since:
+        for start_idx in [1, 101]:   # 키워드당 최대 200개 수집
+            try:
+                url = (
+                    f"https://openapi.naver.com/v1/search/news.json"
+                    f"?query={requests.utils.quote(keyword)}&display=100&start={start_idx}&sort=date"
+                )
+                res = requests.get(url, headers=naver_headers, timeout=10)
+                if res.status_code != 200:
                     break
-                link = item.get("link", "")
-                if link in seen_links:
-                    continue
-                seen_links.add(link)
-                title       = clean_html_text(item.get("title", ""))
-                description = clean_html_text(item.get("description", ""))
-                publisher   = publisher_from_url(link)
-                # 그룹 A/B/C 매체만 수집 (미분류 제외), 특정 매체 제외
-                if GROUP_MAP.get(publisher, "") == "":
-                    continue
-                if publisher == "중앙이코노미뉴스":
-                    continue
-                items.append({
-                    "섹션":        section_name,
-                    "매체명":      publisher,
-                    "제목":        title,
-                    "링크":        link,
-                    "요약":        "",
-                    "description": description,
-                    "게시일":      pub_date.strftime("%Y-%m-%d"),
-                })
-            time.sleep(0.1)
-        except Exception:
-            continue
+                api_items = res.json().get("items", [])
+                if not api_items:
+                    break
+                stop_early = False
+                for item in api_items:
+                    pub_date = datetime.strptime(
+                        item["pubDate"], "%a, %d %b %Y %H:%M:%S +0900"
+                    ).replace(tzinfo=kst)
+                    if pub_date < since:
+                        stop_early = True
+                        break
+                    link = item.get("link", "")
+                    if link in seen_links:
+                        continue
+                    seen_links.add(link)
+                    title       = clean_html_text(item.get("title", ""))
+                    description = clean_html_text(item.get("description", ""))
+                    publisher   = publisher_from_url(link)
+                    # 그룹 A/B/C 매체만 수집 (미분류 제외), 특정 매체 제외
+                    if GROUP_MAP.get(publisher, "") == "":
+                        continue
+                    if publisher == "중앙이코노미뉴스":
+                        continue
+                    # PICK 여부: 네이버 링크일 때만 확인 (캐싱으로 중복 호출 방지)
+                    pick_val = ""
+                    if "naver.com" in link:
+                        try:
+                            pr = requests.get(link, headers=HEADERS, timeout=4)
+                            if pr.status_code == 200:
+                                from bs4 import BeautifulSoup as _BS
+                                _soup = _BS(pr.text, 'html.parser')
+                                if _soup.select_one('.is_pick, .media_end_head_journalist_edit_label') or "PICK" in pr.text[:3000]:
+                                    pick_val = "PICK"
+                        except Exception:
+                            pass
+                    items.append({
+                        "섹션":        section_name,
+                        "매체명":      publisher,
+                        "제목":        title,
+                        "링크":        link,
+                        "요약":        "",
+                        "description": description,
+                        "게시일":      pub_date.strftime("%Y-%m-%d"),
+                        "PICK":        pick_val,
+                        "그룹":        GROUP_MAP.get(publisher, ""),
+                    })
+                if stop_early:
+                    break
+                time.sleep(0.1)
+            except Exception:
+                break
     return items
 
 
@@ -753,6 +778,21 @@ if st.button("🔍 기사 수집 시작", type="primary", use_container_width=Tr
             st.toast(f"수집 중: {sec_name} ({len(kws)}개 키워드)")
             all_items[sec_name] = collect_section(sec_name, kws, days)
         prog.progress(100)
+        # 섹션별: PICK 우선 → 그룹 A 우선 → 게시일 최신순 정렬
+        GROUP_ORDER = {"그룹 A": 0, "그룹 B": 1, "그룹 C": 2, "": 3}
+        for sec_name in all_items:
+            all_items[sec_name].sort(key=lambda x: (
+                0 if x.get("PICK") == "PICK" else 1,       # PICK 우선
+                GROUP_ORDER.get(x.get("그룹", ""), 3),      # 그룹 A → B → C
+                x.get("게시일", "") if x.get("게시일") else "0000-00-00",  # 최신순 (내림차순 별도)
+            ))
+            # 게시일만 내림차순 재정렬 (PICK·그룹 순위 유지하면서)
+            from itertools import groupby
+            sorted_items = []
+            keyfn = lambda x: (0 if x.get("PICK") == "PICK" else 1, GROUP_ORDER.get(x.get("그룹", ""), 3))
+            for _, grp_items in groupby(all_items[sec_name], key=keyfn):
+                sorted_items.extend(sorted(grp_items, key=lambda x: x.get("게시일", ""), reverse=True))
+            all_items[sec_name] = sorted_items
         st.session_state["daily_items"] = all_items
         st.session_state.pop("daily_done", None)
         st.success("수집 완료! 아래에서 기사를 선택하세요.")
@@ -779,7 +819,13 @@ if "daily_items" in st.session_state:
             with col_chk:
                 checked = st.checkbox("", key=f"chk_{sec_name}_{idx}", label_visibility="collapsed")
             with col_info:
+                grp   = item.get("그룹", "")
+                pick  = item.get("PICK", "")
+                badge_style = GROUP_BADGE.get(grp, GROUP_BADGE[""])
+                grp_badge  = f"<span style='{badge_style}'>{grp if grp else '미분류'}</span> " if grp else ""
+                pick_badge = "<span style='color:#e74c3c;font-weight:bold;font-size:0.8em;'>[PICK]</span> " if pick == "PICK" else ""
                 st.markdown(
+                    f"{grp_badge}{pick_badge}"
                     f"<a href=\"{item['링크']}\" target=\"_blank\" "
                     f"style=\"text-decoration:none;color:#1a73e8;font-weight:500;\">{item['제목']}</a> "
                     f"<span style='color:#888;font-size:0.85em;'>({item['매체명']} · {item['게시일']})</span>",
@@ -872,7 +918,7 @@ if "daily_selected" in st.session_state:
 
                     clip_text_lines.append(f"* {title} ({media})")
                     if summary:
-                        clip_text_lines.append(f"   {summary}")
+                        clip_text_lines.append(f"   * {summary}")
 
                 clip_text_lines.append("")
 
