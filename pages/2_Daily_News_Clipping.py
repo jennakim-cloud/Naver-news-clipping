@@ -94,7 +94,7 @@ FIXED_MAP = {
     "businessplus": "비즈니스플러스", "newspim": "뉴스핌", "m-i": "매일일보",
     "pointdaily": "포인트데일리", "ajunews": "아주경제", "asiatoday": "아시아투데이", "xportsnews": "엑스포츠뉴스", "sports": "엑스포츠뉴스", "kukinews": "쿠키뉴스", "youthdaily": "청년일보",
     "seoulwire": "서울와이어", "newstomato": "뉴스토마토", "widedaily": "와이드경제",
-    "apparelnews": "어패럴뉴스", "biztribune": "비즈트리뷴", "etoday": "이투데이",
+    "apparelnews": "어패럴뉴스", "biztribune": "비즈트리뷴", "etoday": "이투데이", "edaily": "이데일리",
     "ngetnews": "뉴스저널리즘", "hansbiz": "한스경제", "byline": "바이라인네트워크",
     "dealsite": "딜사이트", "businesspost": "비즈니스포스트", "dnews": "대한경제",
     "insight": "인사이트", "slist": "싱글리스트", "theviewers": "뷰어스",
@@ -704,13 +704,26 @@ def collect_section(section_name: str, keywords: list, days: int) -> list:
                     if pub_date < since:
                         stop_early = True
                         break
-                    link = item.get("link", "")
-                    if link in seen_links:
+                    link         = item.get("link", "")
+                    original_link = item.get("originallink", "")
+                    # 중복 체크: naver link 기준
+                    dedup_key = link or original_link
+                    if dedup_key in seen_links:
                         continue
-                    seen_links.add(link)
+                    seen_links.add(dedup_key)
                     title       = clean_html_text(item.get("title", ""))
                     description = clean_html_text(item.get("description", ""))
-                    publisher   = publisher_from_url(link)
+                    # 매체명: naver link로 OID 추출 우선, 안 되면 originallink로 도메인 매핑
+                    publisher = publisher_from_url(link)
+                    if publisher and publisher == publisher_from_url(original_link):
+                        pass  # 일치하면 그대로
+                    elif "naver.com" not in link and original_link:
+                        # naver link가 아닌 경우 originallink로 재시도
+                        pub2 = publisher_from_url(original_link)
+                        if pub2 and pub2 != publisher:
+                            publisher = pub2
+                    # 표시 링크: naver 링크 우선 (클릭 시 네이버로)
+                    display_link = link if link else original_link
                     # 그룹 A/B/C 매체만 수집 (미분류 제외), 특정 매체 제외
                     if GROUP_MAP.get(publisher, "") == "":
                         continue
@@ -725,7 +738,7 @@ def collect_section(section_name: str, keywords: list, days: int) -> list:
                         "섹션":        section_name,
                         "매체명":      publisher,
                         "제목":        title,
-                        "링크":        link,
+                        "링크":        display_link,
                         "요약":        "",
                         "description": description,
                         "게시일":      pub_date.strftime("%Y-%m-%d"),
@@ -796,6 +809,13 @@ if st.button("🔍 기사 수집 시작", type="primary", use_container_width=Tr
         st.session_state["daily_items"] = all_items
         st.session_state.pop("daily_done", None)
         st.success("수집 완료! 아래에서 기사를 선택하세요.")
+
+        # 디버그: 섹션별 수집 건수 표시
+        with st.expander("🔍 수집 결과 상세 (디버그)", expanded=False):
+            for sec, its in all_items.items():
+                st.markdown(f"**{sec}**: {len(its)}건")
+                for it in its[:5]:
+                    st.caption(f"  {it['매체명']} · {it['제목'][:50]}")
 
 # ── Step 2: 섹션별 기사 선택 ─────────────────────────────────
 if "daily_items" in st.session_state:
