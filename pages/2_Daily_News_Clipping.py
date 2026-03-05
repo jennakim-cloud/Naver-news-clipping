@@ -709,18 +709,7 @@ def collect_section(section_name: str, keywords: list, days: int) -> list:
                         continue
                     if publisher == "중앙이코노미뉴스":
                         continue
-                    # PICK 여부: 네이버 링크일 때만 확인 (캐싱으로 중복 호출 방지)
-                    pick_val = ""
-                    if "naver.com" in link:
-                        try:
-                            pr = requests.get(link, headers=HEADERS, timeout=4)
-                            if pr.status_code == 200:
-                                from bs4 import BeautifulSoup as _BS
-                                _soup = _BS(pr.text, 'html.parser')
-                                if _soup.select_one('.is_pick, .media_end_head_journalist_edit_label') or "PICK" in pr.text[:3000]:
-                                    pick_val = "PICK"
-                        except Exception:
-                            pass
+                    pick_val = ""  # PICK 크롤링 제거 (속도 우선)
                     items.append({
                         "섹션":        section_name,
                         "매체명":      publisher,
