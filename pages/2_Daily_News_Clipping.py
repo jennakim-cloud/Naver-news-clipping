@@ -820,14 +820,6 @@ if st.button("🔍 기사 수집 시작", type="primary", use_container_width=Tr
         st.session_state.pop("daily_done", None)
         st.success("수집 완료! 아래에서 기사를 선택하세요.")
 
-        # 디버그: 섹션별 수집 건수 + 패션업계 전체 목록 표시
-        with st.expander("🔍 수집 결과 디버그 (확인 후 삭제 예정)", expanded=True):
-            for sec, its in all_items.items():
-                st.markdown(f"**{sec}**: {len(its)}건")
-            st.divider()
-            st.markdown("**패션 업계 전체 수집 기사**")
-            for it in all_items.get("패션 업계", []):
-                st.caption(f"{it['그룹']} | {it['매체명']} | {it['제목'][:60]}")
 
 # ── Step 2: 섹션별 기사 선택 ─────────────────────────────────
 if "daily_items" in st.session_state:
