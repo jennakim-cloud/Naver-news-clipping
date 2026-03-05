@@ -88,11 +88,11 @@ FIXED_MAP = {
     "dizzotv": "디지틀조선일보", "cstimes": "컨슈머타임스",
     "consumernews": "소비자가만드는신문", "ceoscoredaily": "CEO스코어데일리",
     "breaknews": "브레이크뉴스", "bizwnews": "비즈월드", "beyondpost": "비욘드포스트",
-    "asiatime": "아시아타임즈", "apnews": "아시아에이", "biz": "패션비즈",
+    "asiatime": "아시아타임즈", "apnews": "아시아에이", "newdaily": "뉴데일리", "biz": "패션비즈",
     "viva100": "브릿지경제", "srtimes": "SR타임스", "kpenews": "한국정경신문",
     "news2day": "뉴스투데이", "fashionbiz": "패션비즈", "econovill": "이코노믹리뷰",
     "businessplus": "비즈니스플러스", "newspim": "뉴스핌", "m-i": "매일일보",
-    "pointdaily": "포인트데일리", "ajunews": "아주경제", "asiatoday": "아시아투데이", "xportsnews": "엑스포츠뉴스", "sports": "엑스포츠뉴스", "youthdaily": "청년일보",
+    "pointdaily": "포인트데일리", "ajunews": "아주경제", "asiatoday": "아시아투데이", "xportsnews": "엑스포츠뉴스", "sports": "엑스포츠뉴스", "kukinews": "쿠키뉴스", "youthdaily": "청년일보",
     "seoulwire": "서울와이어", "newstomato": "뉴스토마토", "widedaily": "와이드경제",
     "apparelnews": "어패럴뉴스", "biztribune": "비즈트리뷴", "etoday": "이투데이",
     "ngetnews": "뉴스저널리즘", "hansbiz": "한스경제", "byline": "바이라인네트워크",
@@ -206,7 +206,8 @@ def publisher_from_url(link: str) -> str:
     try:
         domain = link.split('//')[-1].split('/')[0].lower()
         domain = re.sub(r'^(www\.|n\.|news\.|m\.|blog\.|sports\.)', '', domain)
-        for key, name in FIXED_MAP.items():
+        # 긴 키워드부터 먼저 매칭 (짧은 키워드 오매핑 방지)
+        for key, name in sorted(FIXED_MAP.items(), key=lambda x: -len(x[0])):
             if key in domain:
                 return name
         return domain.split('.')[0].upper()
@@ -630,9 +631,9 @@ def run_search(query: str, client_id: str, client_secret: str,
     return pd.DataFrame(news_data)
 
 
-st.set_page_config(page_title="Press Release Coverage", page_icon="📰", layout="wide")
+st.set_page_config(page_title="보도자료 커버리지 수집", page_icon="📰", layout="wide")
 
-st.title("📰 보도자료 커버리지")
+st.title("📰 Press Release Coverage")
 st.caption("키워드로 원하는 기간의 기사를 수집하고 엑셀로 다운로드합니다.")
 
 try:
