@@ -302,19 +302,25 @@ def crawl_fi(query: str, since: datetime) -> list:
 
 
 def crawl_itnk(query: str, since: datetime) -> list:
-    """국제섬유신문 itnk.co.kr 크롤링"""
+    """국제섬유신문 itnk.co.kr 크롤링 — 검색 후 제목 키워드 필터링"""
     results = []
     try:
         search_url = f"https://www.itnk.co.kr/news/articleList.html?sc_word={requests.utils.quote(query)}&view_type=sm"
         res = requests.get(search_url, headers=HEADERS, timeout=8)
         soup = BeautifulSoup(res.text, 'html.parser')
         import re as _re
+        # 검색어 토큰 (공백 분리) — 제목에 하나라도 포함되면 수집
+        query_tokens = [t.lower() for t in query.split() if len(t) > 1]
         for item in soup.select('li.item, div.item, .article-list li'):
             a = item.find('a', href=True)
             if not a:
                 continue
             title = a.get_text(strip=True)
             if not title or len(title) < 5:
+                continue
+            # 키워드 필터: 제목에 검색어 포함 여부 확인
+            title_lower = title.lower()
+            if query_tokens and not any(tok in title_lower for tok in query_tokens):
                 continue
             href = a['href']
             if not href.startswith('http'):
@@ -610,9 +616,23 @@ except Exception:
 def summarize_article(title: str, description: str) -> str:
     """Claude API로 기사 핵심을 1줄로 요약"""
     try:
+        # Anthropic API 키: st.secrets 우선 → 환경변수 폴백
+        try:
+            anthropic_key = st.secrets["anthropic"]["api_key"]
+        except Exception:
+            import os
+            anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+
+        if not anthropic_key:
+            return ""
+
         resp = requests.post(
             "https://api.anthropic.com/v1/messages",
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": anthropic_key,
+                "anthropic-version": "2023-06-01",
+            },
             json={
                 "model": "claude-sonnet-4-20250514",
                 "max_tokens": 200,
