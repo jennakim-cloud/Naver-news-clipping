@@ -834,7 +834,7 @@ if "daily_items" in st.session_state:
             continue
 
         selected_in_section = []
-        for idx, item in enumerate(items[:30]):
+        for idx, item in enumerate(items[:50]):
             col_chk, col_info = st.columns([1, 11])
             with col_chk:
                 checked = st.checkbox("", key=f"chk_{sec_name}_{idx}", label_visibility="collapsed")
