@@ -346,39 +346,63 @@ def crawl_itnk(query: str, since: datetime) -> list:
 
 
 def crawl_fpost(query: str, since: datetime) -> list:
-    """패션포스트 fpost.co.kr 크롤링"""
+    """패션포스트 fpost.co.kr 크롤링 — 목록 페이지에서 키워드 필터링"""
     results = []
     try:
         import re as _re
-        search_url = f"https://fpost.co.kr/board/bbs/search.php?bo_table=mainFsp&sfl=wr_subject%2Cwr_content&stx={requests.utils.quote(query)}"
-        res = requests.get(search_url, headers=HEADERS, timeout=8)
-        soup = BeautifulSoup(res.text, 'html.parser')
-        for a in soup.select('a[href*="bo_table=mainFsp"]'):
-            title = a.get_text(strip=True)
-            if not title or len(title) < 5:
+        # 검색 페이지와 메인 목록 페이지 모두 시도
+        urls = [
+            f"https://fpost.co.kr/board/bbs/search.php?bo_table=mainFsp&sfl=wr_subject&stx={requests.utils.quote(query)}",
+            "https://fpost.co.kr/board/bbs/board.php?bo_table=mainFsp",
+        ]
+        query_tokens = [t.lower() for t in query.split() if len(t) > 1]
+        seen_hrefs = set()
+
+        for url in urls:
+            try:
+                res = requests.get(url, headers=HEADERS, timeout=8)
+                if res.status_code != 200:
+                    continue
+                soup = BeautifulSoup(res.text, 'html.parser')
+
+                # 기사 링크 선택: wr_id 파라미터 포함된 링크
+                for a in soup.select('a[href*="wr_id"], a[href*="bo_table=mainFsp"]'):
+                    title = a.get_text(strip=True)
+                    if not title or len(title) < 5:
+                        continue
+                    # 키워드 필터
+                    if query_tokens and not any(tok in title.lower() for tok in query_tokens):
+                        continue
+                    href = a['href']
+                    if not href.startswith('http'):
+                        href = 'https://fpost.co.kr' + href
+                    if href in seen_hrefs:
+                        continue
+                    seen_hrefs.add(href)
+
+                    # 날짜: 상위 요소에서 탐색
+                    parent = a.find_parent(['li', 'div', 'tr', 'td', 'article'])
+                    pub_date = None
+                    if parent:
+                        m = _re.search(r'(\d{4})[.\-/](\d{2})[.\-/](\d{2})', parent.get_text())
+                        if m:
+                            try:
+                                pub_date = datetime.strptime(
+                                    f"{m.group(1)}-{m.group(2)}-{m.group(3)}", '%Y-%m-%d'
+                                ).replace(tzinfo=timezone(timedelta(hours=9)))
+                            except Exception:
+                                pass
+                    if pub_date and pub_date < since:
+                        continue
+                    results.append({
+                        "그룹": "그룹 A", "매체명": "패션포스트",
+                        "제목": f'=HYPERLINK("{href}", "{title}")',
+                        "제목_표시": title, "링크": href,
+                        "PICK": "",
+                        "게시일": pub_date.strftime('%Y-%m-%d') if pub_date else "",
+                    })
+            except Exception:
                 continue
-            href = a['href']
-            if not href.startswith('http'):
-                href = 'https://fpost.co.kr' + href
-            parent = a.find_parent(['li', 'div', 'tr', 'td'])
-            pub_date = None
-            if parent:
-                m = _re.search(r'(\d{4})[.\-/](\d{2})[.\-/](\d{2})', parent.get_text())
-                if m:
-                    try:
-                        pub_date = datetime.strptime(f"{m.group(1)}-{m.group(2)}-{m.group(3)}", '%Y-%m-%d').replace(
-                            tzinfo=timezone(timedelta(hours=9)))
-                    except Exception:
-                        pass
-            if pub_date and pub_date < since:
-                continue
-            results.append({
-                "그룹": "그룹 A", "매체명": "패션포스트",
-                "제목": f'=HYPERLINK("{href}", "{title}")',
-                "제목_표시": title, "링크": href,
-                "PICK": "",
-                "게시일": pub_date.strftime('%Y-%m-%d') if pub_date else "",
-            })
     except Exception:
         pass
     return results
@@ -608,7 +632,7 @@ def run_search(query: str, client_id: str, client_secret: str,
 
 st.set_page_config(page_title="Press Release Coverage", page_icon="📰", layout="wide")
 
-st.title("📰 보도자료 커버리지 리포트")
+st.title("📰 보도자료 커버리지")
 st.caption("키워드로 원하는 기간의 기사를 수집하고 엑셀로 다운로드합니다.")
 
 try:
