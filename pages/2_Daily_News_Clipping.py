@@ -88,11 +88,11 @@ FIXED_MAP = {
     "dizzotv": "디지틀조선일보", "cstimes": "컨슈머타임스",
     "consumernews": "소비자가만드는신문", "ceoscoredaily": "CEO스코어데일리",
     "breaknews": "브레이크뉴스", "bizwnews": "비즈월드", "beyondpost": "비욘드포스트",
-    "asiatime": "아시아타임즈", "apnews": "아시아에이", "biz": "패션비즈",
+    "asiatime": "아시아타임즈", "apnews": "아시아에이", "newdaily": "뉴데일리",
     "viva100": "브릿지경제", "srtimes": "SR타임스", "kpenews": "한국정경신문",
     "news2day": "뉴스투데이", "fashionbiz": "패션비즈", "econovill": "이코노믹리뷰",
     "businessplus": "비즈니스플러스", "newspim": "뉴스핌", "m-i": "매일일보",
-    "pointdaily": "포인트데일리", "ajunews": "아주경제", "asiatoday": "아시아투데이", "xportsnews": "엑스포츠뉴스", "sports": "엑스포츠뉴스", "youthdaily": "청년일보",
+    "pointdaily": "포인트데일리", "ajunews": "아주경제", "asiatoday": "아시아투데이", "xportsnews": "엑스포츠뉴스", "sports": "엑스포츠뉴스", "asiatoday": "아시아투데이", "xportsnews": "엑스포츠뉴스", "sports": "엑스포츠뉴스", "youthdaily": "청년일보",
     "seoulwire": "서울와이어", "newstomato": "뉴스토마토", "widedaily": "와이드경제",
     "apparelnews": "어패럴뉴스", "biztribune": "비즈트리뷴", "etoday": "이투데이",
     "ngetnews": "뉴스저널리즘", "hansbiz": "한스경제", "byline": "바이라인네트워크",
@@ -119,7 +119,7 @@ OID_MAP = {
     "088": "매일신문", "092": "지디넷코리아", "117": "마이데일리", "119": "데일리안",
     "123": "조세일보", "138": "디지털데일리", "143": "쿠키뉴스", "144": "스포츠월드",
     "214": "MBC", "215": "한국경제TV", "241": "시사IN", "243": "이코노미스트",
-    "277": "아시아경제", "584": "아시아투데이", "293": "블로터", "321": "브릿지경제", "323": "한국섬유신문",
+    "277": "아시아경제", "584": "아시아투데이", "584": "아시아투데이", "293": "블로터", "321": "브릿지경제", "323": "한국섬유신문",
     "324": "이투데이", "329": "뉴데일리", "366": "조선비즈", "374": "SBS Biz",
     "383": "한국정경신문", "410": "어패럴뉴스", "417": "머니S", "421": "뉴스1",
     "437": "JTBC", "445": "대한경제", "448": "서울와이어", "449": "TV조선",
@@ -302,14 +302,13 @@ def crawl_fi(query: str, since: datetime) -> list:
 
 
 def crawl_itnk(query: str, since: datetime) -> list:
-    """국제섬유신문 itnk.co.kr 크롤링 — 검색 후 제목 키워드 필터링"""
+    """국제섬유신문 itnk.co.kr 크롤링 — 제목 키워드 필터링"""
     results = []
     try:
         search_url = f"https://www.itnk.co.kr/news/articleList.html?sc_word={requests.utils.quote(query)}&view_type=sm"
         res = requests.get(search_url, headers=HEADERS, timeout=8)
         soup = BeautifulSoup(res.text, 'html.parser')
         import re as _re
-        # 검색어 토큰 (공백 분리) — 제목에 하나라도 포함되면 수집
         query_tokens = [t.lower() for t in query.split() if len(t) > 1]
         for item in soup.select('li.item, div.item, .article-list li'):
             a = item.find('a', href=True)
@@ -318,14 +317,12 @@ def crawl_itnk(query: str, since: datetime) -> list:
             title = a.get_text(strip=True)
             if not title or len(title) < 5:
                 continue
-            # 키워드 필터: 제목에 검색어 포함 여부 확인
-            title_lower = title.lower()
-            if query_tokens and not any(tok in title_lower for tok in query_tokens):
+            if query_tokens and not any(tok in title.lower() for tok in query_tokens):
                 continue
             href = a['href']
             if not href.startswith('http'):
                 href = 'https://www.itnk.co.kr' + href
-            m = _re.search(r'(\d{4})[.\-/](\d{2})[.\-/](\d{2})', item.get_text())
+            m = _re.search(r"(\d{4})[.\-/](\d{2})[.\-/](\d{2})", item.get_text())
             pub_date = None
             if m:
                 try:
@@ -346,41 +343,64 @@ def crawl_itnk(query: str, since: datetime) -> list:
         pass
     return results
 
-
 def crawl_fpost(query: str, since: datetime) -> list:
-    """패션포스트 fpost.co.kr 크롤링"""
+    """패션포스트 fpost.co.kr 크롤링 — 목록 페이지에서 키워드 필터링"""
     results = []
     try:
         import re as _re
-        search_url = f"https://fpost.co.kr/board/bbs/search.php?bo_table=mainFsp&sfl=wr_subject%2Cwr_content&stx={requests.utils.quote(query)}"
-        res = requests.get(search_url, headers=HEADERS, timeout=8)
-        soup = BeautifulSoup(res.text, 'html.parser')
-        for a in soup.select('a[href*="bo_table=mainFsp"]'):
-            title = a.get_text(strip=True)
-            if not title or len(title) < 5:
+        # 검색 페이지와 메인 목록 페이지 모두 시도
+        urls = [
+            f"https://fpost.co.kr/board/bbs/search.php?bo_table=mainFsp&sfl=wr_subject&stx={requests.utils.quote(query)}",
+            "https://fpost.co.kr/board/bbs/board.php?bo_table=mainFsp",
+        ]
+        query_tokens = [t.lower() for t in query.split() if len(t) > 1]
+        seen_hrefs = set()
+
+        for url in urls:
+            try:
+                res = requests.get(url, headers=HEADERS, timeout=8)
+                if res.status_code != 200:
+                    continue
+                soup = BeautifulSoup(res.text, 'html.parser')
+
+                # 기사 링크 선택: wr_id 파라미터 포함된 링크
+                for a in soup.select('a[href*="wr_id"], a[href*="bo_table=mainFsp"]'):
+                    title = a.get_text(strip=True)
+                    if not title or len(title) < 5:
+                        continue
+                    # 키워드 필터
+                    if query_tokens and not any(tok in title.lower() for tok in query_tokens):
+                        continue
+                    href = a['href']
+                    if not href.startswith('http'):
+                        href = 'https://fpost.co.kr' + href
+                    if href in seen_hrefs:
+                        continue
+                    seen_hrefs.add(href)
+
+                    # 날짜: 상위 요소에서 탐색
+                    parent = a.find_parent(['li', 'div', 'tr', 'td', 'article'])
+                    pub_date = None
+                    if parent:
+                        m = _re.search(r'(\d{4})[.\-/](\d{2})[.\-/](\d{2})', parent.get_text())
+                        if m:
+                            try:
+                                pub_date = datetime.strptime(
+                                    f"{m.group(1)}-{m.group(2)}-{m.group(3)}", '%Y-%m-%d'
+                                ).replace(tzinfo=timezone(timedelta(hours=9)))
+                            except Exception:
+                                pass
+                    if pub_date and pub_date < since:
+                        continue
+                    results.append({
+                        "그룹": "그룹 A", "매체명": "패션포스트",
+                        "제목": f'=HYPERLINK("{href}", "{title}")',
+                        "제목_표시": title, "링크": href,
+                        "PICK": "",
+                        "게시일": pub_date.strftime('%Y-%m-%d') if pub_date else "",
+                    })
+            except Exception:
                 continue
-            href = a['href']
-            if not href.startswith('http'):
-                href = 'https://fpost.co.kr' + href
-            parent = a.find_parent(['li', 'div', 'tr', 'td'])
-            pub_date = None
-            if parent:
-                m = _re.search(r'(\d{4})[.\-/](\d{2})[.\-/](\d{2})', parent.get_text())
-                if m:
-                    try:
-                        pub_date = datetime.strptime(f"{m.group(1)}-{m.group(2)}-{m.group(3)}", '%Y-%m-%d').replace(
-                            tzinfo=timezone(timedelta(hours=9)))
-                    except Exception:
-                        pass
-            if pub_date and pub_date < since:
-                continue
-            results.append({
-                "그룹": "그룹 A", "매체명": "패션포스트",
-                "제목": f'=HYPERLINK("{href}", "{title}")',
-                "제목_표시": title, "링크": href,
-                "PICK": "",
-                "게시일": pub_date.strftime('%Y-%m-%d') if pub_date else "",
-            })
     except Exception:
         pass
     return results
@@ -395,50 +415,37 @@ def crawl_tnnews(query: str, since: datetime) -> list:
         res = requests.get(search_url, headers=HEADERS, timeout=8)
         soup = BeautifulSoup(res.text, 'html.parser')
         query_tokens = [t.lower() for t in query.split() if len(t) > 1]
-
-        # 기사 블록: td-block-span6, td-module 등 다양한 클래스 포함
-        articles = soup.select('div.td-module-meta-info, div.item-details, div.td-block-span6')
-        for item in articles:
+        for item in soup.select('div.td-module-meta-info, div.item-details, div.td-block-span6'):
             a = item.find('a', href=True)
             if not a:
                 continue
             title = a.get_text(strip=True)
             if not title or len(title) < 5:
                 continue
-
-            # 키워드 필터
-            title_lower = title.lower()
-            if query_tokens and not any(tok in title_lower for tok in query_tokens):
+            if query_tokens and not any(tok in title.lower() for tok in query_tokens):
                 continue
-
             href = a['href']
-
-            # 날짜: <time> 태그 우선 → 텍스트 패턴 폴백
             pub_date = None
             time_tag = item.find('time')
             if time_tag:
                 dt_str = time_tag.get('datetime', '') or time_tag.get_text(strip=True)
-                m = _re.search(r'(\d{4})-(\d{2})-(\d{2})', dt_str)
+                m = _re.search(r"(\d{4})-(\d{2})-(\d{2})", dt_str)
                 if m:
                     try:
-                        pub_date = datetime.strptime(
-                            f"{m.group(1)}-{m.group(2)}-{m.group(3)}", '%Y-%m-%d'
-                        ).replace(tzinfo=timezone(timedelta(hours=9)))
+                        pub_date = datetime.strptime(f"{m.group(1)}-{m.group(2)}-{m.group(3)}", '%Y-%m-%d').replace(
+                            tzinfo=timezone(timedelta(hours=9)))
                     except Exception:
                         pass
             if not pub_date:
-                m = _re.search(r'(\d{4})[.\-/](\d{2})[.\-/](\d{2})', item.get_text())
+                m = _re.search(r"(\d{4})[.\-/](\d{2})[.\-/](\d{2})", item.get_text())
                 if m:
                     try:
-                        pub_date = datetime.strptime(
-                            f"{m.group(1)}-{m.group(2)}-{m.group(3)}", '%Y-%m-%d'
-                        ).replace(tzinfo=timezone(timedelta(hours=9)))
+                        pub_date = datetime.strptime(f"{m.group(1)}-{m.group(2)}-{m.group(3)}", '%Y-%m-%d').replace(
+                            tzinfo=timezone(timedelta(hours=9)))
                     except Exception:
                         pass
-
             if pub_date and pub_date < since:
                 continue
-
             results.append({
                 "그룹": "그룹 A", "매체명": "테넌트뉴스",
                 "제목": f'=HYPERLINK("{href}", "{title}")',
@@ -450,14 +457,12 @@ def crawl_tnnews(query: str, since: datetime) -> list:
         pass
     return results
 
-
 EXTRA_CRAWLERS = {
     "패션인사이트": crawl_fi,
     "국제섬유신문": crawl_itnk,
     "패션포스트":   crawl_fpost,
     "테넌트뉴스":   crawl_tnnews,
 }
-
 
 def build_excel(df: pd.DataFrame) -> bytes:
     """DataFrame → 서식 적용 엑셀 바이트 반환"""
@@ -501,8 +506,12 @@ def build_excel(df: pd.DataFrame) -> bytes:
     return output.getvalue()
 
 
+# ══════════════════════════════════════════════════════════════
+#  핵심 수집 로직 (Streamlit progress bar와 연동)
+# ══════════════════════════════════════════════════════════════
+
 def run_search(query: str, client_id: str, client_secret: str,
-               progress_bar, status_text, days: int = 1) -> pd.DataFrame | None:
+               progress_bar, status_text, days: int = 7) -> pd.DataFrame | None:
 
     naver_headers = {
         "X-Naver-Client-Id": client_id,
@@ -512,6 +521,7 @@ def run_search(query: str, client_id: str, client_secret: str,
     now = datetime.now(kst)
     since = now - timedelta(days=days)
 
+    # ── Step 1: API 수집 ──────────────────────────────────────
     raw_items = []
     status_text.text(f"🔍 '{query}' 기사 수집 중...")
     progress_bar.progress(5)
@@ -559,6 +569,7 @@ def run_search(query: str, client_id: str, client_secret: str,
     status_text.text(f"📰 {len(raw_items)}개 기사 수집 완료 — 매체명 · PICK 크롤링 중...")
     progress_bar.progress(20)
 
+    # ── Step 2: 병렬 크롤링 ───────────────────────────────────
     crawl_results = {}
     total = len(raw_items)
 
@@ -578,10 +589,11 @@ def run_search(query: str, client_id: str, client_secret: str,
                     "pick": ""
                 }
             done += 1
-            pct = 20 + int(done / total * 70)
+            pct = 20 + int(done / total * 70)   # 20~90% 구간
             progress_bar.progress(pct)
             status_text.text(f"🔄 크롤링 진행: {done} / {total}")
 
+    # ── Step 3: DataFrame 구성 ────────────────────────────────
     status_text.text("📊 데이터 정리 중...")
     progress_bar.progress(95)
 
@@ -597,7 +609,7 @@ def run_search(query: str, client_id: str, client_secret: str,
             "그룹":   group_val,
             "매체명": publisher,
             "제목":   f'=HYPERLINK("{link}", "{title}")',
-            "제목_표시": title,
+            "제목_표시": title,   # 화면 표시용 (수식 없는 버전)
             "링크":   link,
             "PICK":   pick_val,
             "게시일": item["pub_date"].strftime('%Y-%m-%d %H:%M'),
@@ -608,9 +620,13 @@ def run_search(query: str, client_id: str, client_secret: str,
     return pd.DataFrame(news_data)
 
 
-st.set_page_config(page_title="데일리 뉴스 클리핑", page_icon="📋", layout="wide")
+# ══════════════════════════════════════════════════════════════
+#  Streamlit UI
+# ══════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════
+#  섹션 정의
+# ════════════════════════════════════════════════════════════
 
-# ── 섹션 정의: 각 섹션마다 여러 키워드로 수집 후 중복 제거 ──
 SECTIONS = [
     ("무신사", [
         "무신사", "29CM", "MUSINSA",
@@ -630,7 +646,12 @@ SECTIONS = [
     ]),
 ]
 
-# ── API 키 ────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════
+#  Streamlit 페이지 설정
+# ════════════════════════════════════════════════════════════
+
+st.set_page_config(page_title="Daily News Clipping", page_icon="📋", layout="wide")
+
 try:
     client_id     = st.secrets["naver"]["client_id"]
     client_secret = st.secrets["naver"]["client_secret"]
@@ -639,52 +660,9 @@ except Exception:
     client_id     = os.environ.get("NAVER_CLIENT_ID", "")
     client_secret = os.environ.get("NAVER_CLIENT_SECRET", "")
 
-# ── Claude API로 기사 요약 1줄 생성 ──────────────────────────
-def summarize_article(title: str, description: str) -> str:
-    """Claude API로 기사 핵심을 1줄로 요약"""
-    try:
-        # Anthropic API 키: st.secrets 우선 → 환경변수 폴백
-        try:
-            anthropic_key = st.secrets["anthropic"]["api_key"]
-        except Exception:
-            import os
-            anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
-
-        if not anthropic_key:
-            return ""
-
-        resp = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": anthropic_key,
-                "anthropic-version": "2023-06-01",
-            },
-            json={
-                "model": "claude-sonnet-4-20250514",
-                "max_tokens": 200,
-                "messages": [{
-                    "role": "user",
-                    "content": (
-                        f"아래 뉴스 기사의 핵심 내용을 한국어로 1줄(40자 이내)로 요약해줘.\n"
-                        f"숫자나 구체적 수치가 있으면 반드시 포함해.\n"
-                        f"요약문만 출력하고 다른 말은 하지 마.\n\n"
-                        f"제목: {title}\n"
-                        f"내용: {description}"
-                    )
-                }]
-            },
-            timeout=15,
-        )
-        if resp.status_code == 200:
-            return resp.json()["content"][0]["text"].strip()
-    except Exception:
-        pass
-    return ""
-
 
 def collect_section(section_name: str, keywords: list, days: int) -> list:
-    """섹션별 기사 수집 — 키워드별로 수집 후 링크 기준 중복 제거"""
+    """섹션별 기사 수집 — 키워드별 수집 후 링크 기준 중복 제거"""
     naver_headers = {
         "X-Naver-Client-Id": client_id,
         "X-Naver-Client-Secret": client_secret,
@@ -724,7 +702,6 @@ def collect_section(section_name: str, keywords: list, days: int) -> list:
                     "요약":        "",
                     "description": description,
                     "게시일":      pub_date.strftime("%Y-%m-%d"),
-                    "선택":        False,
                 })
             time.sleep(0.1)
         except Exception:
@@ -736,8 +713,8 @@ def collect_section(section_name: str, keywords: list, days: int) -> list:
 #  UI
 # ════════════════════════════════════════════════════════════
 
-st.title("📋 데일리 뉴스 클리핑")
-st.caption("섹션별 주요 기사를 선택하고 AI 요약을 더해 데일리 클리핑을 완성합니다.")
+st.title("📋 Daily News Clipping")
+st.caption("섹션별 주요 기사를 선택하고 요약을 추가해 데일리 클리핑을 완성합니다.")
 
 with st.sidebar:
     st.header("⚙️ 설정")
@@ -757,7 +734,7 @@ with st.sidebar:
         raw = st.text_area(sec_name, value=default_val, key=f"q_{sec_name}", height=68)
         custom_queries[sec_name] = [k.strip() for k in raw.split(",") if k.strip()]
 
-# ── Step 1: 기사 수집 버튼 ────────────────────────────────────
+# ── Step 1: 기사 수집 ────────────────────────────────────────
 if st.button("🔍 기사 수집 시작", type="primary", use_container_width=True):
     if not client_id or not client_secret:
         st.error("API 키를 확인해주세요.")
@@ -771,16 +748,16 @@ if st.button("🔍 기사 수집 시작", type="primary", use_container_width=Tr
             all_items[sec_name] = collect_section(sec_name, kws, days)
         prog.progress(100)
         st.session_state["daily_items"] = all_items
+        st.session_state.pop("daily_done", None)
         st.success("수집 완료! 아래에서 기사를 선택하세요.")
 
 # ── Step 2: 섹션별 기사 선택 ─────────────────────────────────
 if "daily_items" in st.session_state:
     all_items = st.session_state["daily_items"]
-
     st.divider()
     st.subheader("📌 기사 선택 (섹션별 5~7개 권장)")
 
-    selected_all = {}   # {섹션명: [선택된 기사 dict 리스트]}
+    selected_all = {}
 
     for sec_name, _ in SECTIONS:
         items = all_items.get(sec_name, [])
@@ -791,24 +768,25 @@ if "daily_items" in st.session_state:
             continue
 
         selected_in_section = []
-        for idx, item in enumerate(items[:30]):   # 최대 30개 표시
+        for idx, item in enumerate(items[:30]):
             col_chk, col_info = st.columns([1, 11])
             with col_chk:
                 checked = st.checkbox("", key=f"chk_{sec_name}_{idx}", label_visibility="collapsed")
             with col_info:
                 st.markdown(
-                    f"**{item['제목']}** "
+                    f"<a href=\"{item['링크']}\" target=\"_blank\" "
+                    f"style=\"text-decoration:none;color:#1a73e8;font-weight:500;\">{item['제목']}</a> "
                     f"<span style='color:#888;font-size:0.85em;'>({item['매체명']} · {item['게시일']})</span>",
                     unsafe_allow_html=True
                 )
             if checked:
-                selected_in_section.append(item)
+                selected_in_section.append(dict(item))
 
         selected_all[sec_name] = selected_in_section
 
     st.session_state["daily_selected"] = selected_all
 
-# ── Step 3: AI 요약 생성 + 클리핑 완성 ───────────────────────
+# ── Step 3: 요약 입력 + 클리핑 완성 ─────────────────────────
 if "daily_selected" in st.session_state:
     selected_all = st.session_state["daily_selected"]
     total_selected = sum(len(v) for v in selected_all.values())
@@ -817,21 +795,33 @@ if "daily_selected" in st.session_state:
         st.info("위에서 기사를 체크하면 클리핑이 생성됩니다.")
     else:
         st.divider()
-        col_gen, col_info = st.columns([2, 3])
-        with col_gen:
-            gen_summary = st.button("✨ AI 요약 생성 후 클리핑 완성", type="primary", use_container_width=True)
-        with col_info:
-            st.caption(f"선택된 기사 {total_selected}건 · AI가 각 기사를 1줄로 요약합니다.")
+        st.subheader("✏️ 요약 입력 (선택사항)")
+        st.caption("각 기사 아래 입력란에 한 줄 요약을 직접 입력하세요. 비워두면 요약 없이 클리핑됩니다.")
 
-        if gen_summary:
-            prog2 = st.progress(0)
-            done  = 0
-            for sec_name, items in selected_all.items():
-                for item in items:
-                    item["요약"] = summarize_article(item["제목"], item["description"])
-                    done += 1
-                    prog2.progress(int(done / total_selected * 100))
-            st.session_state["daily_selected"] = selected_all
+        for sec_name, _ in SECTIONS:
+            items = selected_all.get(sec_name, [])
+            if not items:
+                continue
+            st.markdown(f"**■ {sec_name}**")
+            for idx, item in enumerate(items):
+                st.markdown(
+                    f"<a href=\"{item['링크']}\" target=\"_blank\" "
+                    f"style=\"text-decoration:none;color:#1a73e8;\">{item['제목']}</a> "
+                    f"<span style='color:#888;font-size:0.85em;'>({item['매체명']})</span>",
+                    unsafe_allow_html=True
+                )
+                item["요약"] = st.text_input(
+                    "요약",
+                    value=item.get("요약", ""),
+                    placeholder="한 줄 요약 입력 (선택)...",
+                    key=f"summary_{sec_name}_{idx}",
+                    label_visibility="collapsed"
+                )
+
+        st.session_state["daily_selected"] = selected_all
+
+        st.divider()
+        if st.button("📄 클리핑 완성", type="primary", use_container_width=True):
             st.session_state["daily_done"] = True
 
         # ── 클리핑 미리보기 ──────────────────────────────────
@@ -854,32 +844,29 @@ if "daily_selected" in st.session_state:
                 clip_text_lines.append(f"■{sec_name}")
 
                 for item in items:
-                    title    = item["제목"]
-                    media    = item["매체명"]
-                    link     = item["링크"]
-                    summary  = item.get("요약", "")
+                    title   = item["제목"]
+                    media   = item["매체명"]
+                    link    = item["링크"]
+                    summary = item.get("요약", "")
 
-                    # 화면 표시
                     st.markdown(
-                        f"* <a href='{link}' target='_blank' style='text-decoration:none;color:#1a73e8;'>{title}</a> "
+                        f"* <a href=\"{link}\" target=\"_blank\" "
+                        f"style=\"text-decoration:none;color:#1a73e8;font-weight:500;\">{title}</a> "
                         f"<span style='color:#555;font-size:0.9em;'>({media})</span>",
                         unsafe_allow_html=True
                     )
                     if summary:
                         st.markdown(
-                            f"<div style='margin-left:20px;color:#444;font-size:0.88em;'>"
-                            f"* {summary}</div>",
+                            f"<div style='margin-left:20px;color:#444;font-size:0.88em;'>* {summary}</div>",
                             unsafe_allow_html=True
                         )
 
-                    # 텍스트 복사용
                     clip_text_lines.append(f"* {title} ({media})")
                     if summary:
                         clip_text_lines.append(f"   * {summary}")
 
                 clip_text_lines.append("")
 
-            # ── 텍스트 복사 영역 ─────────────────────────────
             st.divider()
             st.subheader("📋 텍스트 복사")
             st.caption("아래 텍스트를 복사해서 사용하세요.")
