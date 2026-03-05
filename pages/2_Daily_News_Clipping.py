@@ -92,7 +92,7 @@ FIXED_MAP = {
     "viva100": "브릿지경제", "srtimes": "SR타임스", "kpenews": "한국정경신문",
     "news2day": "뉴스투데이", "fashionbiz": "패션비즈", "econovill": "이코노믹리뷰",
     "businessplus": "비즈니스플러스", "newspim": "뉴스핌", "m-i": "매일일보",
-    "pointdaily": "포인트데일리", "ajunews": "아주경제", "asiatoday": "아시아투데이", "xportsnews": "엑스포츠뉴스", "sports": "엑스포츠뉴스", "asiatoday": "아시아투데이", "xportsnews": "엑스포츠뉴스", "sports": "엑스포츠뉴스", "youthdaily": "청년일보",
+    "pointdaily": "포인트데일리", "ajunews": "아주경제", "asiatoday": "아시아투데이", "xportsnews": "엑스포츠뉴스", "sports": "엑스포츠뉴스", "kukinews": "쿠키뉴스", "youthdaily": "청년일보",
     "seoulwire": "서울와이어", "newstomato": "뉴스토마토", "widedaily": "와이드경제",
     "apparelnews": "어패럴뉴스", "biztribune": "비즈트리뷴", "etoday": "이투데이",
     "ngetnews": "뉴스저널리즘", "hansbiz": "한스경제", "byline": "바이라인네트워크",
@@ -206,7 +206,8 @@ def publisher_from_url(link: str) -> str:
     try:
         domain = link.split('//')[-1].split('/')[0].lower()
         domain = re.sub(r'^(www\.|n\.|news\.|m\.|blog\.|sports\.)', '', domain)
-        for key, name in FIXED_MAP.items():
+        # 긴 키워드부터 먼저 매칭 (짧은 키워드 오매핑 방지)
+        for key, name in sorted(FIXED_MAP.items(), key=lambda x: -len(x[0])):
             if key in domain:
                 return name
         return domain.split('.')[0].upper()
