@@ -387,31 +387,58 @@ def crawl_fpost(query: str, since: datetime) -> list:
 
 
 def crawl_tnnews(query: str, since: datetime) -> list:
-    """테넌트뉴스 tnnews.co.kr 크롤링"""
+    """테넌트뉴스 tnnews.co.kr 크롤링 — 키워드 필터 + 날짜 파싱 강화"""
     results = []
     try:
         import re as _re
         search_url = f"https://tnnews.co.kr/?s={requests.utils.quote(query)}"
         res = requests.get(search_url, headers=HEADERS, timeout=8)
         soup = BeautifulSoup(res.text, 'html.parser')
-        for item in soup.select('div.item-details, div.td-module-meta-info'):
+        query_tokens = [t.lower() for t in query.split() if len(t) > 1]
+
+        # 기사 블록: td-block-span6, td-module 등 다양한 클래스 포함
+        articles = soup.select('div.td-module-meta-info, div.item-details, div.td-block-span6')
+        for item in articles:
             a = item.find('a', href=True)
             if not a:
                 continue
             title = a.get_text(strip=True)
             if not title or len(title) < 5:
                 continue
+
+            # 키워드 필터
+            title_lower = title.lower()
+            if query_tokens and not any(tok in title_lower for tok in query_tokens):
+                continue
+
             href = a['href']
-            m = _re.search(r'(\d{4})[.\-/](\d{2})[.\-/](\d{2})', item.get_text())
+
+            # 날짜: <time> 태그 우선 → 텍스트 패턴 폴백
             pub_date = None
-            if m:
-                try:
-                    pub_date = datetime.strptime(f"{m.group(1)}-{m.group(2)}-{m.group(3)}", '%Y-%m-%d').replace(
-                        tzinfo=timezone(timedelta(hours=9)))
-                except Exception:
-                    pass
+            time_tag = item.find('time')
+            if time_tag:
+                dt_str = time_tag.get('datetime', '') or time_tag.get_text(strip=True)
+                m = _re.search(r'(\d{4})-(\d{2})-(\d{2})', dt_str)
+                if m:
+                    try:
+                        pub_date = datetime.strptime(
+                            f"{m.group(1)}-{m.group(2)}-{m.group(3)}", '%Y-%m-%d'
+                        ).replace(tzinfo=timezone(timedelta(hours=9)))
+                    except Exception:
+                        pass
+            if not pub_date:
+                m = _re.search(r'(\d{4})[.\-/](\d{2})[.\-/](\d{2})', item.get_text())
+                if m:
+                    try:
+                        pub_date = datetime.strptime(
+                            f"{m.group(1)}-{m.group(2)}-{m.group(3)}", '%Y-%m-%d'
+                        ).replace(tzinfo=timezone(timedelta(hours=9)))
+                    except Exception:
+                        pass
+
             if pub_date and pub_date < since:
                 continue
+
             results.append({
                 "그룹": "그룹 A", "매체명": "테넌트뉴스",
                 "제목": f'=HYPERLINK("{href}", "{title}")',
