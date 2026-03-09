@@ -241,10 +241,8 @@ def fetch_naver_article_info(link: str) -> dict:
         if publisher:
             result["publisher"] = publisher
 
-        # ── PICK 여부 ─────────────────────────────────────────
+        # ── PICK 여부 (CSS 선택자만 신뢰, 텍스트 검색 제거)
         if soup.select_one('.is_pick, .media_end_head_journalist_edit_label'):
-            result["pick"] = "PICK"
-        elif "PICK" in res.text:
             result["pick"] = "PICK"
 
 
@@ -631,7 +629,7 @@ def run_search(query: str, client_id: str, client_secret: str,
     return pd.DataFrame(news_data)
 
 
-st.set_page_config(page_title="보도자료 커버리지 수집", page_icon="📰", layout="wide")
+st.set_page_config(page_title="Press Release Coverage", page_icon="📰", layout="wide")
 
 st.title("📰 Press Release Coverage")
 st.caption("키워드로 원하는 기간의 기사를 수집하고 엑셀로 다운로드합니다.")
