@@ -877,8 +877,8 @@ if st.button("🔍 기사 수집 시작", type="primary", use_container_width=Tr
             kws = custom_queries[sec_name]
             st.toast(f"수집 중: {sec_name} ({len(kws)}개 키워드)")
             raw = collect_section(sec_name, kws, days, global_seen_links)
-            # 유사도 90% 이상 기사: 그룹 A 위주 7개 이하로 제한
-            all_items[sec_name] = deduplicate_similar(raw, threshold=0.90, max_per_cluster=7)
+            # 유사도 80% 이상 기사: 그룹 A 위주 5개 이하로 제한
+            all_items[sec_name] = deduplicate_similar(raw, threshold=0.80, max_per_cluster=5)
         prog.progress(100)
         # 섹션별: 게시일 최신순 + 동일 날짜 내 그룹 A 우선 정렬
         from datetime import datetime as _dt
