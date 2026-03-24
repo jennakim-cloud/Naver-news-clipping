@@ -104,7 +104,13 @@ FIXED_MAP = {
     "sisaon": "시사온", "smarttoday": "스마트투데이", "ziksir": "직썰",
     "job-post": "잡포스트", "issuenbiz": "이슈앤비즈", "fashionn": "패션엔",
     "thebell": "더벨", "ftoday": "파이낸셜투데이", "newspost": "뉴스포스트",
-    "econonews": "이코노뉴스", "thevaluenews": "더밸류뉴스", "megaeconomy": "메가경제", "greened": "녹색경제신문", "sisajournal-e": "시사저널이코노미", "digitaltoday": "디지털투데이"
+    "econonews": "이코노뉴스", "thevaluenews": "더밸류뉴스", "megaeconomy": "메가경제", "greened": "녹색경제신문", "sisajournal-e": "시사저널이코노미", "digitaltoday": "디지털투데이",
+    # ── "daily" 서브스트링 오매핑 방지용 명시 항목 ──────────────────
+    "smedaily": "중소기업신문",
+    "thedailypost": "더데일리포스트",
+    "dailypost": "더데일리포스트",
+    "topicaldaily": "토피컬데일리",
+    "edaily": "이데일리",
 }
 
 OID_MAP = {
@@ -206,10 +212,16 @@ def publisher_from_url(link: str) -> str:
     try:
         domain = link.split('//')[-1].split('/')[0].lower()
         domain = re.sub(r'^(www\.|n\.|news\.|m\.|blog\.|sports\.)', '', domain)
-        for key, name in FIXED_MAP.items():
-            if key in domain:
+        domain_base = domain.split('.')[0]  # 첫 번째 세그먼트 (e.g. "smedaily")
+        # 1차: 첫 세그먼트 정확 매칭 — "daily"가 "smedaily"에 오매핑되는 현상 방지
+        for key, name in sorted(FIXED_MAP.items(), key=lambda x: -len(x[0])):
+            if key == domain_base:
                 return name
-        return domain.split('.')[0].upper()
+        # 2차: 첫 세그먼트 서브스트링 매칭 (긴 키 우선)
+        for key, name in sorted(FIXED_MAP.items(), key=lambda x: -len(x[0])):
+            if key in domain_base:
+                return name
+        return domain_base.upper()
     except Exception:
         return "기타매체"
 
@@ -241,10 +253,20 @@ def fetch_naver_article_info(link: str) -> dict:
             result["publisher"] = publisher
 
         # ── PICK 여부 ─────────────────────────────────────────
-        if soup.select_one('.is_pick, .media_end_head_journalist_edit_label'):
+        # 네이버 언론사 PICK 전용 CSS 요소만 확인 (res.text 전체 검색은 오탐 발생)
+        pick_selectors = [
+            'em.is_pick',
+            '.media_end_head_journalist_edit_label',
+            '.media_end_head_journalist_pick',
+            '.is_pick',
+        ]
+        if any(soup.select_one(sel) for sel in pick_selectors):
             result["pick"] = "PICK"
-        elif "PICK" in res.text:
-            result["pick"] = "PICK"
+        else:
+            # 헤더 영역으로 범위 한정하여 PICK 텍스트 확인 (전체 res.text 검색 오탐 방지)
+            head_area = soup.select_one('.media_end_head_journalist, .media_end_head_top')
+            if head_area and 'PICK' in head_area.get_text():
+                result["pick"] = "PICK"
 
 
 
