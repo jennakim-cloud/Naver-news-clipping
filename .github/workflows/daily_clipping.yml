@@ -1,0 +1,59 @@
+name: Daily News Clipping
+
+on:
+  # ── 자동 실행: 매일 오전 9시 / 오후 5시 (KST = UTC+9)
+  #    GitHub Actions cron은 UTC 기준이므로 9시간을 뺌
+  #    오전 9시 KST  = 00:00 UTC
+  #    오후 5시 KST  = 08:00 UTC
+  schedule:
+    - cron: "0 8 * * 1-5"   # 평일 오후 5시 KST (= 08:00 UTC)
+
+  # ── 수동 실행 (GitHub 웹 UI에서 "Run workflow" 버튼으로 즉시 실행 가능)
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "실행 이유 (선택)"
+        required: false
+        default: "수동 실행"
+
+jobs:
+  clipping:
+    name: 뉴스 클리핑 수집 및 슬랙 전송
+    runs-on: ubuntu-latest
+    timeout-minutes: 15      # 15분 초과 시 자동 취소
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 3.11 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: 패키지 설치
+        run: pip install requests beautifulsoup4
+
+      - name: 자동 클리핑 실행
+        env:
+          NAVER_CLIENT_ID:     ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
+          SLACK_BOT_TOKEN:     ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID:    ${{ secrets.SLACK_CHANNEL_ID }}
+        run: python auto_clipping.py
+
+      - name: 실패 시 슬랙 알림
+        if: failure()
+        env:
+          SLACK_BOT_TOKEN:  ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+        run: |
+          curl -s -X POST https://slack.com/api/chat.postMessage \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"channel\": \"$SLACK_CHANNEL_ID\",
+              \"text\": \"⚠️ 자동 뉴스 클리핑 실행 실패\\n GitHub Actions 로그를 확인해주세요.\"
+            }"
