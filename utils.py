@@ -110,7 +110,36 @@ FIXED_MAP = {
     "thedailypost": "더데일리포스트",
     "dailypost": "더데일리포스트",
     "topicaldaily": "토피컬데일리",
+    # ── "edaily" 오매핑 방지 ─────────────────────────────────────────
     "edaily": "이데일리",
+    # ── "daily" 키가 skydaily 등을 흡수하지 않도록 명시 항목 ────────
+    "skydaily": "스카이데일리",
+    "gooddaily": "굿데일리",
+    "safedaily": "세이프타임즈",
+    "betterdaily": "베터데일리",
+    "koreadaily": "코리아데일리",
+    "newsdaily": "뉴스데일리",
+    "joydaily": "조이데일리",
+    "healthdaily": "헬스데일리",
+    "meddaily": "메디데일리",
+    "pharmldaily": "팜이데일리",
+    "fntoday": "파이낸스투데이",
+    "thefirstmedia": "더퍼스트",
+    "meditoday": "메디투데이",
+    "bokuennews": "보건뉴스",
+    "hitnews": "히트뉴스",
+    "yakup": "약업신문",
+    "bosa": "보사뉴스",
+    "doctorsnews": "의사신문",
+    "docdocdoc": "닥터W",
+    "monews": "메디칼옵저버",
+    "rapportian": "라포르시안",
+    "newsmp": "뉴스메디",
+    "medifonews": "메디포뉴스",
+    "mdtoday": "메디컬투데이",
+    "healthinnews": "헬스인뉴스",
+    "health": "헬스조선",
+    "kormedi": "코메디닷컴",
 }
 
 OID_MAP = {
@@ -211,16 +240,29 @@ def publisher_from_url(link: str) -> str:
                 return OID_MAP[oid]
     try:
         domain = link.split('//')[-1].split('/')[0].lower()
-        domain = re.sub(r'^(www\.|n\.|news\.|m\.|blog\.|sports\.)', '', domain)
-        domain_base = domain.split('.')[0]  # 첫 번째 세그먼트 (e.g. "smedaily")
-        # 1차: 첫 세그먼트 정확 매칭 — "daily"가 "smedaily"에 오매핑되는 현상 방지
+        # 서브도메인 제거 (www., m., n., news., blog., sports.)
+        domain = re.sub(r'^(www\d?\.|n\.|news\.|m\.|blog\.|sports\.|biz\.)', '', domain)
+        # 전체 도메인(예: edaily.co.kr)과 첫 세그먼트(예: edaily) 모두 추출
+        domain_full = domain.split(':')[0]          # 포트 제거
+        domain_base = domain_full.split('.')[0]     # 첫 세그먼트
+
+        # ── 1차: 전체 도메인 정확 매칭 ─────────────────────────
+        for key, name in sorted(FIXED_MAP.items(), key=lambda x: -len(x[0])):
+            if domain_full == key or domain_full.startswith(key + '.'):
+                return name
+
+        # ── 2차: 첫 세그먼트 정확 매칭 ────────────────────────
         for key, name in sorted(FIXED_MAP.items(), key=lambda x: -len(x[0])):
             if key == domain_base:
                 return name
-        # 2차: 첫 세그먼트 서브스트링 매칭 (긴 키 우선)
+
+        # ── 3차: 서브스트링 매칭 — key 길이가 domain_base의 60% 이상일 때만 허용
+        #   "daily"(5자)가 "skydaily"(8자)를 흡수하는 오매핑 방지
         for key, name in sorted(FIXED_MAP.items(), key=lambda x: -len(x[0])):
             if key in domain_base:
-                return name
+                if len(key) >= len(domain_base) * 0.6:
+                    return name
+
         return domain_base.upper()
     except Exception:
         return "기타매체"
