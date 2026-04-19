@@ -110,6 +110,36 @@ FIXED_MAP = {
     "thedailypost": "더데일리포스트",
     "dailypost": "더데일리포스트",
     "topicaldaily": "토피컬데일리",
+    # ── "edaily" 오매핑 방지 ─────────────────────────────────────────
+    "edaily": "이데일리",
+    # ── "daily" 키가 skydaily 등을 흡수하지 않도록 명시 항목 ────────
+    "skydaily": "스카이데일리",
+    "gooddaily": "굿데일리",
+    "safedaily": "세이프타임즈",
+    "betterdaily": "베터데일리",
+    "koreadaily": "코리아데일리",
+    "newsdaily": "뉴스데일리",
+    "joydaily": "조이데일리",
+    "healthdaily": "헬스데일리",
+    "meddaily": "메디데일리",
+    "pharmldaily": "팜이데일리",
+    "fntoday": "파이낸스투데이",
+    "thefirstmedia": "더퍼스트",
+    "meditoday": "메디투데이",
+    "bokuennews": "보건뉴스",
+    "hitnews": "히트뉴스",
+    "yakup": "약업신문",
+    "bosa": "보사뉴스",
+    "doctorsnews": "의사신문",
+    "docdocdoc": "닥터W",
+    "monews": "메디칼옵저버",
+    "rapportian": "라포르시안",
+    "newsmp": "뉴스메디",
+    "medifonews": "메디포뉴스",
+    "mdtoday": "메디컬투데이",
+    "healthinnews": "헬스인뉴스",
+    "health": "헬스조선",
+    "kormedi": "코메디닷컴",
 }
 
 OID_MAP = {
@@ -210,16 +240,31 @@ def publisher_from_url(link: str) -> str:
                 return OID_MAP[oid]
     try:
         domain = link.split('//')[-1].split('/')[0].lower()
-        domain = re.sub(r'^(www\.|n\.|news\.|m\.|blog\.|sports\.)', '', domain)
-        domain_base = domain.split('.')[0]  # 첫 번째 세그먼트 (e.g. "smedaily")
-        # 1차: 첫 세그먼트 정확 매칭 — "daily"가 "smedaily"에 오매핑되는 현상 방지
+        # 서브도메인 제거 (www., m., n., news., blog., sports.)
+        domain = re.sub(r'^(www\d?\.|n\.|news\.|m\.|blog\.|sports\.|biz\.)', '', domain)
+        # 전체 도메인(예: edaily.co.kr)과 첫 세그먼트(예: edaily) 모두 추출
+        domain_full = domain.split(':')[0]          # 포트 제거
+        domain_base = domain_full.split('.')[0]     # 첫 세그먼트
+
+        # ── 1차: 전체 도메인 정확 매칭 (foo.co.kr 통째로) ─────────
+        # 예: "edaily.co.kr" → "edaily"  vs  "skydaily.co.kr" → "skydaily"
+        for key, name in sorted(FIXED_MAP.items(), key=lambda x: -len(x[0])):
+            if domain_full == key or domain_full.startswith(key + '.'):
+                return name
+
+        # ── 2차: 첫 세그먼트 정확 매칭 ────────────────────────────
         for key, name in sorted(FIXED_MAP.items(), key=lambda x: -len(x[0])):
             if key == domain_base:
                 return name
-        # 2차: 첫 세그먼트 서브스트링 매칭 (긴 키 우선)
+
+        # ── 3차: 서브스트링 매칭 — 단, key가 단독 단어 수준일 때만 허용
+        #   "daily"(5자) 같이 짧은 키가 "skydaily"를 흡수하는 오매핑 방지:
+        #   서브스트링 매칭은 key 길이가 domain_base 길이의 60% 이상일 때만 허용
         for key, name in sorted(FIXED_MAP.items(), key=lambda x: -len(x[0])):
             if key in domain_base:
-                return name
+                if len(key) >= len(domain_base) * 0.6:
+                    return name
+
         return domain_base.upper()
     except Exception:
         return "기타매체"
@@ -651,6 +696,7 @@ def run_search(query: str, client_id: str, client_secret: str,
 # 섹션별 제목 노이즈 필터 — 키워드가 다른 의미로 쓰인 기사 제외
 SECTION_NOISE_FILTER = {
     "패션 업계": ["주가", "증시", "코스피", "코스닥", "주식", "배당", "공시", "매출채권", "채권"],
+    "뷰티 업계": ["주가", "증시", "코스피", "코스닥", "주식", "배당", "공시", "매출채권", "채권"],
     "유통 업계": ["주가", "증시", "코스피", "코스닥", "주식", "배당", "공시"],
     "IT 업계":   ["주가", "증시", "코스피", "코스닥", "주식", "배당", "공시", "네이버지도", "카카오맵"],
     "패션 플랫폼": ["주가", "증시", "코스피", "코스닥", "주식", "배당", "공시"],
@@ -662,16 +708,19 @@ SECTIONS = [
     ("무신사", [
         "무신사", "29CM", "MUSINSA",
     ]),
-    ("패션 플랫폼", [
-        "W컨셉", "에이블리", "지그재그", "네이버 크림", "차란", "패션 플랫폼", "명품 플랫폼",
-    ]),
     ("패션 업계", [
         "패션 업계", "유니클로", "패션 브랜드",
         "하고하우스", "LF", "신세계 인터내셔날", "삼성물산 패션",
         "F&F", "영원무역", "한섬", "이랜드",
     ]),
+    ("뷰티 업계", [
+        "올리브영", "에이피알", "뷰티 업계", "화장품 업계", "코스맥스", "콜마",
+    ]),
+    ("패션 플랫폼", [
+        "W컨셉", "에이블리", "지그재그", "네이버 크림", "차란", "패션 플랫폼", "명품 플랫폼",
+    ]),
     ("유통 업계", [
-        "쿠팡", "컬리", "백화점", "유통업계", "공정위", "올리브영",
+        "쿠팡", "컬리", "백화점", "유통업계", "공정위",
     ]),
     ("IT 업계", [
         "네이버", "카카오", "토스", "배달앱", "온플법",
@@ -679,7 +728,7 @@ SECTIONS = [
 ]
 
 # 화면 표시 순서 (수집 순서와 별개)
-DISPLAY_ORDER = ["무신사", "패션 업계", "유통 업계", "IT 업계", "패션 플랫폼"]
+DISPLAY_ORDER = ["무신사", "패션 업계", "뷰티 업계", "유통 업계", "IT 업계", "패션 플랫폼"]
 
 # ════════════════════════════════════════════════════════════
 #  Streamlit 페이지 설정
@@ -696,10 +745,10 @@ except Exception:
     client_secret = os.environ.get("NAVER_CLIENT_SECRET", "")
 
 
-def deduplicate_similar(items: list, threshold: float = 0.90, max_per_cluster: int = 7) -> list:
+def deduplicate_similar(items: list, threshold: float = 0.70, max_per_cluster: int = 3) -> list:
     """
-    유사도 threshold(기본 90%) 이상인 기사를 클러스터링 후,
-    그룹 A 매체 우선으로 max_per_cluster(기본 7)개만 유지.
+    유사도 threshold(기본 70%) 이상인 기사를 클러스터링 후,
+    그룹 A 매체 우선으로 max_per_cluster(기본 3)개만 유지.
     difflib.SequenceMatcher 사용 (별도 라이브러리 불필요).
     """
     if not items:
@@ -877,8 +926,8 @@ if st.button("🔍 기사 수집 시작", type="primary", use_container_width=Tr
             kws = custom_queries[sec_name]
             st.toast(f"수집 중: {sec_name} ({len(kws)}개 키워드)")
             raw = collect_section(sec_name, kws, days, global_seen_links)
-            # 유사도 80% 이상 기사: 그룹 A 위주 5개 이하로 제한
-            all_items[sec_name] = deduplicate_similar(raw, threshold=0.80, max_per_cluster=5)
+            # 유사도 70% 이상 기사: 그룹 A 위주 최대 3개로 제한
+            all_items[sec_name] = deduplicate_similar(raw, threshold=0.70, max_per_cluster=3)
         prog.progress(100)
         # 섹션별: 게시일 최신순 + 동일 날짜 내 그룹 A 우선 정렬
         from datetime import datetime as _dt
