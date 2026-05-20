@@ -527,9 +527,11 @@ def post_to_slack(blocks: list) -> None:
             "Content-Type":  "application/json; charset=utf-8",
         },
         json={
-            "channel": SLACK_CHANNEL_ID,
-            "blocks":  blocks,
-            "text":    "데일리 뉴스 클리핑",  # 알림 미리보기용 fallback
+            "channel":       SLACK_CHANNEL_ID,
+            "blocks":        blocks,
+            "text":          "데일리 뉴스 클리핑",  # 알림 미리보기용 fallback
+            "unfurl_links":  False,  # 링크 미리보기(썸네일) 비활성화
+            "unfurl_media":  False,  # 미디어 미리보기 비활성화
         },
         timeout=15,
     )
