@@ -590,9 +590,9 @@ def build_slack_blocks(selected: dict) -> list:
         })
 
     # 푸터
-    since_str = (datetime.now(timezone(timedelta(hours=9))) - timedelta(hours=COLLECT_HOURS)
-                 ).strftime("%m/%d %H:%M")
-    now_str   = datetime.now(timezone(timedelta(hours=9))).strftime("%m/%d %H:%M")
+    kst_now   = datetime.now(timezone(timedelta(hours=9)))
+    since_str = kst_now.replace(hour=COLLECT_START_HOUR, minute=0, second=0).strftime("%m/%d %H:%M")
+    now_str   = kst_now.strftime("%m/%d %H:%M")
     blocks.append({
         "type": "context",
         "elements": [{
