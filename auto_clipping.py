@@ -23,6 +23,7 @@ import json
 import difflib
 import logging
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -51,8 +52,10 @@ DEDUP_TITLE_THRESHOLD    = 0.60 # 제목 유사도 중복 제거 임계값 (낮�
 DEDUP_DESC_THRESHOLD     = 0.75 # description 유사도 중복 제거 임계값
 
 # 수집 시간 범위: 당일 오전 8시 ~ 오후 5시 (KST)
+PICK_MAX_WORKERS   = 10  # PICK 크롤링 병렬 스레드 수
+PICK_TIMEOUT       = 6   # PICK 크롤링 타임아웃 (초)
 COLLECT_START_HOUR = 8   # 수집 시작 시각 (KST)
-COLLECT_END_HOUR   = 17  # 수집 종료 시각 (KST, 실행 시각)
+COLLECT_END_HOUR   = 15  # 수집 종료 시각 (KST, 실행 시각)
 
 HEADERS = {
     "User-Agent": (
@@ -319,6 +322,59 @@ def deduplicate(items: list) -> list:
 #  1단계: 네이버 뉴스 수집
 # ══════════════════════════════════════════════════════════════
 
+# ══════════════════════════════════════════════════════════════
+#  PICK 크롤링
+# ══════════════════════════════════════════════════════════════
+
+def fetch_pick(link: str) -> bool:
+    """네이버 기사 링크에서 언론사 PICK 여부 확인. 비네이버 기사는 False 반환."""
+    if "naver.com" not in link:
+        return False
+    try:
+        from bs4 import BeautifulSoup
+        res = requests.get(link, headers=HEADERS, timeout=PICK_TIMEOUT)
+        if res.status_code != 200:
+            return False
+        soup = BeautifulSoup(res.text, "html.parser")
+        pick_selectors = [
+            "em.is_pick",
+            ".media_end_head_journalist_edit_label",
+            ".media_end_head_journalist_pick",
+            ".is_pick",
+        ]
+        if any(soup.select_one(sel) for sel in pick_selectors):
+            return True
+        head_area = soup.select_one(".media_end_head_journalist, .media_end_head_top")
+        if head_area and "PICK" in head_area.get_text():
+            return True
+        return False
+    except Exception:
+        return False
+
+
+def attach_pick_flags(items: list) -> list:
+    """수집된 기사 목록에 PICK 여부를 병렬 크롤링으로 추가."""
+    if not items:
+        return items
+
+    results = {i: False for i in range(len(items))}
+    with ThreadPoolExecutor(max_workers=PICK_MAX_WORKERS) as executor:
+        future_to_idx = {
+            executor.submit(fetch_pick, item["링크"]): i
+            for i, item in enumerate(items)
+        }
+        for future in as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            try:
+                results[idx] = future.result()
+            except Exception:
+                results[idx] = False
+
+    for i, item in enumerate(items):
+        item["pick"] = results[i]
+    return items
+
+
 def collect_section(section_name: str, keywords: list, since: datetime,
                     global_seen: set) -> list:
     """섹션 키워드로 뉴스 수집. global_seen으로 섹션 간 중복 방지."""
@@ -419,6 +475,8 @@ def collect_all() -> dict:
         log.info(f"수집 중: {sec_name} ({len(keywords)}개 키워드)")
         raw = collect_section(sec_name, keywords, since, global_seen)
         deduped = deduplicate(raw)
+        # PICK 여부 병렬 크롤링
+        deduped = attach_pick_flags(deduped)
         # 최신순 + 그룹 A 우선 정렬
         GROUP_ORDER = {"그룹 A": 0, "그룹 B": 1, "그룹 C": 2, "": 3}
         deduped.sort(key=lambda x: (
@@ -486,7 +544,12 @@ def build_slack_blocks(selected: dict) -> list:
             title   = art["제목"]
             link    = art["링크"]
             media   = art["매체명"]
-            lines.append(f"• <{link}|{title}>  _({media})_")
+            is_pick = art.get("pick", False)
+            if is_pick:
+                # PICK 기사: 제목 볼드 + 매체명 옆 PICK 배지
+                lines.append(f"• <{link}|*{title}*>  _({media} · 🔖PICK)_")
+            else:
+                lines.append(f"• <{link}|{title}>  _({media})_")
 
         blocks.append({
             "type": "section",
