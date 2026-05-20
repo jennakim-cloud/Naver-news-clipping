@@ -5,13 +5,12 @@ GitHub Actions (또는 cron)에서 실행되는 자동 뉴스 클리핑 스크�
 
 흐름:
   1. 네이버 뉴스 API로 섹션별 기사 수집 (당일 오전 8시 ~ 오후 5시 KST)
-  2. Claude API로 섹션당 최대 5개 중요 기사 자동 선별
+  2. 그룹 A 매체 우선으로 섹션당 최대 5개 자동 선별
   3. 슬랙봇으로 지정 채널에 포스팅
 
 필요한 환경변수 (GitHub Secrets):
   NAVER_CLIENT_ID       네이버 검색 API Client ID
   NAVER_CLIENT_SECRET   네이버 검색 API Client Secret
-  ANTHROPIC_API_KEY     Claude API 키
   SLACK_BOT_TOKEN       슬랙봇 OAuth 토큰 (xoxb-...)
   SLACK_CHANNEL_ID      전송할 슬랙 채널 ID (ex. C0XXXXXXXXX)
 """
@@ -40,7 +39,6 @@ log = logging.getLogger(__name__)
 
 NAVER_CLIENT_ID     = os.environ["NAVER_CLIENT_ID"]
 NAVER_CLIENT_SECRET = os.environ["NAVER_CLIENT_SECRET"]
-ANTHROPIC_API_KEY   = os.environ["ANTHROPIC_API_KEY"]
 SLACK_BOT_TOKEN     = os.environ["SLACK_BOT_TOKEN"]
 SLACK_CHANNEL_ID    = os.environ["SLACK_CHANNEL_ID"]
 
@@ -49,7 +47,6 @@ SLACK_CHANNEL_ID    = os.environ["SLACK_CHANNEL_ID"]
 # ══════════════════════════════════════════════════════════════
 
 MAX_ARTICLES_PER_SECTION = 5    # 섹션당 최종 슬랙 노출 기사 수
-CANDIDATE_MULTIPLIER     = 6    # AI에게 넘길 후보 = MAX × MULTIPLIER
 DEDUP_TITLE_THRESHOLD    = 0.60 # 제목 유사도 중복 제거 임계값 (낮을수록 더 많이 제거)
 DEDUP_DESC_THRESHOLD     = 0.75 # description 유사도 중복 제거 임계값
 
@@ -434,88 +431,6 @@ def collect_all() -> dict:
 
     return all_items
 
-# ══════════════════════════════════════════════════════════════
-#  2단계: Claude API로 AI 선별
-# ══════════════════════════════════════════════════════════════
-
-def ai_select_section(section_name: str, candidates: list) -> list:
-    """
-    Claude에게 후보 기사 목록을 넘겨 최대 MAX_ARTICLES_PER_SECTION개 선별.
-    반환: [{"제목": ..., "링크": ..., "매체명": ..., "게시일": ...}, ...]
-    """
-    if not candidates:
-        return []
-
-    # 후보 수 제한 (토큰 절약)
-    pool = candidates[: MAX_ARTICLES_PER_SECTION * CANDIDATE_MULTIPLIER]
-
-    # 번호를 붙여 전달 (Claude가 index로 응답)
-    numbered = "\n".join(
-        f"{i+1}. [{it['매체명']}] {it['제목']} ({it['게시일'][:10]})"
-        + (f"\n   요약: {it['description'][:80]}" if it.get("description") else "")
-        for i, it in enumerate(pool)
-    )
-
-    prompt = f"""당신은 패션·뷰티·유통·IT 업계 담당 PR 팀의 뉴스 큐레이터입니다.
-아래는 오늘 수집된 「{section_name}」 섹션의 뉴스 후보 목록입니다.
-
-{numbered}
-
-다음 기준으로 가장 중요한 기사 최대 {MAX_ARTICLES_PER_SECTION}개를 선별하세요.
-선별 기준:
-1. 업계 실무자(마케터, 브랜드 매니저, 전략 기획자)에게 실질적으로 중요한 기사 우선
-2. 단순 보도자료 단순 재배포(여러 매체가 동일 내용)보다 단독·심층 기사 우선
-3. 동일/유사 내용 기사는 1개만 선택
-4. 광고성 기사, 단신은 후순위
-
-반드시 아래 JSON 형식으로만 응답하세요 (설명 없이 JSON만):
-{{"selected": [1, 3, 7]}}   ← 선택한 기사의 번호 목록 (1-based)"""
-
-    try:
-        res = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key":         ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type":      "application/json",
-            },
-            json={
-                "model":      "claude-sonnet-4-5",
-                "max_tokens": 256,
-                "messages":   [{"role": "user", "content": prompt}],
-            },
-            timeout=30,
-        )
-        res.raise_for_status()
-        raw_text = res.json()["content"][0]["text"].strip()
-
-        # JSON 파싱
-        raw_text = re.sub(r"```json|```", "", raw_text).strip()
-        data     = json.loads(raw_text)
-        indices  = [int(i) - 1 for i in data.get("selected", [])
-                    if 1 <= int(i) <= len(pool)]
-
-        selected = [pool[i] for i in indices[:MAX_ARTICLES_PER_SECTION]]
-        log.info(f"  [{section_name}] AI 선별 완료: {len(selected)}건 선택")
-        return selected
-
-    except Exception as e:
-        log.warning(f"  [{section_name}] AI 선별 실패 ({e}), 규칙 기반 폴백 사용")
-        # 폴백: 그룹 A 우선 상위 N개
-        GROUP_ORDER = {"그룹 A": 0, "그룹 B": 1, "그룹 C": 2, "": 3}
-        fallback = sorted(pool, key=lambda x: GROUP_ORDER.get(x.get("그룹", ""), 3))
-        return fallback[:MAX_ARTICLES_PER_SECTION]
-
-
-def ai_select_all(all_items: dict) -> dict:
-    """전 섹션에 대해 AI 선별 수행."""
-    result = {}
-    for sec_name in DISPLAY_ORDER:
-        candidates = all_items.get(sec_name, [])
-        log.info(f"AI 선별 중: {sec_name} (후보 {len(candidates)}건)")
-        result[sec_name] = ai_select_section(sec_name, candidates)
-        time.sleep(0.5)  # API 호출 간격
-    return result
 
 # ══════════════════════════════════════════════════════════════
 #  3단계: 슬랙 전송
@@ -571,8 +486,7 @@ def build_slack_blocks(selected: dict) -> list:
             title   = art["제목"]
             link    = art["링크"]
             media   = art["매체명"]
-            pub_day = art.get("게시일", "")[:10]
-            lines.append(f"• <{link}|{title}>  _({media} · {pub_day})_")
+            lines.append(f"• <{link}|{title}>  _({media})_")
 
         blocks.append({
             "type": "section",
@@ -597,7 +511,7 @@ def build_slack_blocks(selected: dict) -> list:
         "type": "context",
         "elements": [{
             "type": "mrkdwn",
-            "text": f"🤖 Claude AI 자동 선별 | 수집 기간: {since_str} ~ {now_str} (KST)",
+            "text": f"🤖 자동 선별 | 수집 기간: {since_str} ~ {now_str} (KST)",
         }],
     })
 
@@ -637,8 +551,13 @@ def main():
     total = sum(len(v) for v in all_items.values())
     log.info(f"   전체 수집: {total}건")
 
-    log.info("── 2단계: AI 선별 (Claude)")
-    selected = ai_select_all(all_items)
+    log.info("── 2단계: 규칙 기반 선별 (그룹 A 우선)")
+    GROUP_ORDER = {"그룹 A": 0, "그룹 B": 1, "그룹 C": 2, "": 3}
+    selected = {}
+    for sec_name in DISPLAY_ORDER:
+        candidates = all_items.get(sec_name, [])
+        ranked = sorted(candidates, key=lambda x: GROUP_ORDER.get(x.get("그룹", ""), 3))
+        selected[sec_name] = ranked[:MAX_ARTICLES_PER_SECTION]
     total_selected = sum(len(v) for v in selected.values())
     log.info(f"   선별 완료: {total_selected}건")
 
