@@ -4,7 +4,7 @@ auto_clipping.py
 GitHub Actions (또는 cron)에서 실행되는 자동 뉴스 클리핑 스크립트.
 
 흐름:
-  1. 네이버 뉴스 API로 섹션별 기사 수집 (최근 24시간)
+  1. 네이버 뉴스 API로 섹션별 기사 수집 (당일 오전 8시 ~ 오후 5시 KST)
   2. Claude API로 섹션당 최대 5개 중요 기사 자동 선별
   3. 슬랙봇으로 지정 채널에 포스팅
 
@@ -50,8 +50,12 @@ SLACK_CHANNEL_ID    = os.environ["SLACK_CHANNEL_ID"]
 
 MAX_ARTICLES_PER_SECTION = 5    # 섹션당 최종 슬랙 노출 기사 수
 CANDIDATE_MULTIPLIER     = 6    # AI에게 넘길 후보 = MAX × MULTIPLIER
-DEDUP_THRESHOLD          = 0.70 # 제목 유사도 중복 제거 임계값
-COLLECT_HOURS            = 24   # 수집 기간 (시간)
+DEDUP_TITLE_THRESHOLD    = 0.60 # 제목 유사도 중복 제거 임계값 (낮을수록 더 많이 제거)
+DEDUP_DESC_THRESHOLD     = 0.75 # description 유사도 중복 제거 임계값
+
+# 수집 시간 범위: 당일 오전 8시 ~ 오후 5시 (KST)
+COLLECT_START_HOUR = 8   # 수집 시작 시각 (KST)
+COLLECT_END_HOUR   = 17  # 수집 종료 시각 (KST, 실행 시각)
 
 HEADERS = {
     "User-Agent": (
@@ -258,14 +262,24 @@ def publisher_from_url(link: str) -> str:
         return "기타매체"
 
 
+def _sim(a: str, b: str) -> float:
+    """두 문자열의 유사도 반환 (0~1)."""
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
 def deduplicate(items: list) -> list:
-    """제목 유사도 DEDUP_THRESHOLD 이상이면 그룹 A 우선 1개만 유지."""
+    """
+    제목 유사도 DEDUP_TITLE_THRESHOLD 이상이거나
+    description 유사도 DEDUP_DESC_THRESHOLD 이상이면 동일 기사로 간주.
+    그룹 A 매체 우선으로 1개만 유지.
+    """
     if not items:
         return items
 
     GROUP_PRIORITY = {"그룹 A": 0, "그룹 B": 1, "그룹 C": 2, "": 3}
-    n = len(items)
+    n      = len(items)
     titles = [it["제목"] for it in items]
+    descs  = [it.get("description", "") for it in items]
     parent = list(range(n))
 
     def find(x):
@@ -281,9 +295,14 @@ def deduplicate(items: list) -> list:
 
     for i in range(n):
         for j in range(i + 1, n):
-            ratio = difflib.SequenceMatcher(None, titles[i], titles[j]).ratio()
-            if ratio >= DEDUP_THRESHOLD:
+            # 제목 유사도 체크
+            if _sim(titles[i], titles[j]) >= DEDUP_TITLE_THRESHOLD:
                 union(i, j)
+                continue
+            # description 유사도 체크 (둘 다 내용이 있을 때만)
+            if descs[i] and descs[j] and len(descs[i]) > 20 and len(descs[j]) > 20:
+                if _sim(descs[i], descs[j]) >= DEDUP_DESC_THRESHOLD:
+                    union(i, j)
 
     clusters: dict = defaultdict(list)
     for i in range(n):
@@ -291,7 +310,6 @@ def deduplicate(items: list) -> list:
 
     kept: set = set()
     for cluster_idx in clusters.values():
-        # 그룹 A 우선, 같은 그룹이면 원래 순서(시간순) 우선
         best = sorted(
             cluster_idx,
             key=lambda i: (GROUP_PRIORITY.get(items[i].get("그룹", ""), 3), i)
@@ -392,8 +410,11 @@ def collect_section(section_name: str, keywords: list, since: datetime,
 
 def collect_all() -> dict:
     """전 섹션 수집 후 섹션별 dict 반환."""
-    kst   = timezone(timedelta(hours=9))
-    since = datetime.now(kst) - timedelta(hours=COLLECT_HOURS)
+    kst = timezone(timedelta(hours=9))
+    now = datetime.now(kst)
+    # 당일 오전 8시(KST)부터 실행 시각까지만 수집
+    since = now.replace(hour=COLLECT_START_HOUR, minute=0, second=0, microsecond=0)
+    log.info(f"수집 기간: {since.strftime('%m/%d %H:%M')} ~ {now.strftime('%m/%d %H:%M')} KST")
     global_seen: set = set()
     all_items: dict  = {}
 
