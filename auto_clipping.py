@@ -459,7 +459,7 @@ def ai_select_section(section_name: str, candidates: list) -> list:
                 "content-type":      "application/json",
             },
             json={
-                "model":      "claude-sonnet-4-20250514",
+                "model":      "claude-sonnet-4-5",
                 "max_tokens": 256,
                 "messages":   [{"role": "user", "content": prompt}],
             },
