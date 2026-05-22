@@ -1,11 +1,7 @@
 name: Daily News Clipping
 
 on:
-  # ── 자동 실행: 평일 오후 3시 KST (= 06:00 UTC)
-  schedule:
-    - cron: "50 5 * * *"   # 매일 오후 3시 KST (= 05:50 UTC, 정각 혼잡 회피)
-
-  # ── 수동 실행 (GitHub 웹 UI에서 "Run workflow" 버튼으로 즉시 실행 가능)
+  # ── 수동 실행 및 외부 트리거 (cron-job.org에서 GitHub API로 호출)
   workflow_dispatch:
     inputs:
       reason:
