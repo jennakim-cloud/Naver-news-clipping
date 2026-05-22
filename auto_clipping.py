@@ -116,7 +116,7 @@ FIXED_MAP = {
     "dailypost": "더데일리포스트", "topicaldaily": "토피컬데일리",
     "edaily": "이데일리", "skydaily": "스카이데일리", "gooddaily": "굿데일리",
     "safedaily": "세이프타임즈", "meditoday": "메디투데이", "mdtoday": "메디컬투데이",
-    "healthinnews": "헬스인뉴스", "health": "헬스조선", "kormedi": "코메디닷컴",
+    "healthinnews": "헬스인뉴스", "health": "헬스조선", "kormedi": "코메디닷컴", "techm": "테크엠",
     "hitnews": "히트뉴스", "yakup": "약업신문", "doctorsnews": "의사신문",
     "monews": "메디칼옵저버", "rapportian": "라포르시안", "newsmp": "뉴스메디",
     "medifonews": "메디포뉴스",
