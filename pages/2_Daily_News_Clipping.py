@@ -140,6 +140,7 @@ FIXED_MAP = {
     "healthinnews": "헬스인뉴스",
     "health": "헬스조선",
     "kormedi": "코메디닷컴",
+    "techm": "테크엠",
 }
 
 OID_MAP = {
