@@ -54,8 +54,13 @@ DEDUP_DESC_THRESHOLD     = 0.75 # description 유사도 중복 제거 임계값
 # 수집 시간 범위: 당일 오전 8시 ~ 오후 5시 (KST)
 PICK_MAX_WORKERS   = 10  # PICK 크롤링 병렬 스레드 수
 PICK_TIMEOUT       = 6   # PICK 크롤링 타임아웃 (초)
-COLLECT_START_HOUR = 8   # 수집 시작 시각 (KST)
-COLLECT_END_HOUR   = 15  # 수집 종료 시각 (KST, 실행 시각)
+# 수집 기간 (KST 기준)
+# 평일(월~금): 당일 08:00 ~ 15:00
+# 토요일:      전날(금) 18:00 ~ 당일 15:00
+# 일요일:      전날(토) 15:00 ~ 당일 15:00
+WEEKDAY_START_HOUR  = 8   # 평일 수집 시작 시각
+SATURDAY_START_HOUR = 18  # 토요일 — 전날 오후 6시부터
+SUNDAY_START_HOUR   = 15  # 일요일 — 전날 오후 3시부터
 
 HEADERS = {
     "User-Agent": (
@@ -465,8 +470,18 @@ def collect_all() -> dict:
     """전 섹션 수집 후 섹션별 dict 반환."""
     kst = timezone(timedelta(hours=9))
     now = datetime.now(kst)
-    # 당일 오전 8시(KST)부터 실행 시각까지만 수집
-    since = now.replace(hour=COLLECT_START_HOUR, minute=0, second=0, microsecond=0)
+    weekday = now.weekday()  # 0=월 ... 5=토 6=일
+
+    if weekday == 5:    # 토요일: 전날(금) 오후 6시부터
+        since = (now - timedelta(days=1)).replace(
+            hour=SATURDAY_START_HOUR, minute=0, second=0, microsecond=0)
+    elif weekday == 6:  # 일요일: 전날(토) 오후 3시부터
+        since = (now - timedelta(days=1)).replace(
+            hour=SUNDAY_START_HOUR, minute=0, second=0, microsecond=0)
+    else:               # 평일: 당일 오전 8시부터
+        since = now.replace(
+            hour=WEEKDAY_START_HOUR, minute=0, second=0, microsecond=0)
+
     log.info(f"수집 기간: {since.strftime('%m/%d %H:%M')} ~ {now.strftime('%m/%d %H:%M')} KST")
     global_seen: set = set()
     all_items: dict  = {}
@@ -567,8 +582,18 @@ def build_slack_blocks(selected: dict) -> list:
         })
 
     # 푸터
-    kst_now   = datetime.now(timezone(timedelta(hours=9)))
-    since_str = kst_now.replace(hour=COLLECT_START_HOUR, minute=0, second=0).strftime("%m/%d %H:%M")
+    kst_now = datetime.now(timezone(timedelta(hours=9)))
+    _wd = kst_now.weekday()
+    if _wd == 5:
+        _since = (kst_now - timedelta(days=1)).replace(
+            hour=SATURDAY_START_HOUR, minute=0, second=0, microsecond=0)
+    elif _wd == 6:
+        _since = (kst_now - timedelta(days=1)).replace(
+            hour=SUNDAY_START_HOUR, minute=0, second=0, microsecond=0)
+    else:
+        _since = kst_now.replace(
+            hour=WEEKDAY_START_HOUR, minute=0, second=0, microsecond=0)
+    since_str = _since.strftime("%m/%d %H:%M")
     now_str   = kst_now.strftime("%m/%d %H:%M")
     blocks.append({
         "type": "context",
