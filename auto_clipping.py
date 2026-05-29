@@ -397,9 +397,21 @@ def collect_section(section_name: str, keywords: list, since: datetime,
                     f"?query={requests.utils.quote(keyword)}"
                     f"&display=100&start={start_idx}&sort=date"
                 )
-                res = requests.get(url, headers=naver_headers, timeout=10)
-                if res.status_code != 200:
-                    log.warning(f"네이버 API {res.status_code}: {keyword}")
+                # 재시도 로직: 타임아웃/네트워크 오류 시 최대 3회 재시도
+                res = None
+                for attempt in range(1, 4):
+                    try:
+                        res = requests.get(url, headers=naver_headers, timeout=15)
+                        break
+                    except Exception as _e:
+                        if attempt < 3:
+                            log.warning(f"네트워크 오류 재시도 ({attempt}/3): {_e}")
+                            time.sleep(2 * attempt)
+                        else:
+                            log.warning(f"네이버 API 요청 실패 ({keyword}): {_e}")
+                            break
+                if res is None or res.status_code != 200:
+                    log.warning(f"네이버 API {res.status_code if res else 'No response'}: {keyword}")
                     break
 
                 api_items = res.json().get("items", [])
