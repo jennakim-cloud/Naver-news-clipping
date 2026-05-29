@@ -607,36 +607,45 @@ def run_search(query: str, client_id: str, client_secret: str,
             f"https://openapi.naver.com/v1/search/news.json"
             f"?query={query}&display=100&start={start_index}&sort=date"
         )
-        try:
-            res = requests.get(url, headers=naver_headers, timeout=10)
-            if res.status_code != 200:
-                st.error(f"네이버 API 오류: {res.status_code} — API 키를 확인해주세요.")
-                return None
+        # 재시도 로직: 타임아웃/네트워크 오류 시 최대 3회 재시도
+        max_retries = 3
+        res = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                res = requests.get(url, headers=naver_headers, timeout=15)
+                break  # 성공 시 루프 탈출
+            except Exception as e:
+                if attempt < max_retries:
+                    status_text.text(f"⚠️ 네트워크 오류, 재시도 중... ({attempt}/{max_retries})")
+                    time.sleep(2 * attempt)  # 2초, 4초 간격으로 재시도
+                else:
+                    st.error(f"API 요청 오류 ({max_retries}회 재시도 후 실패): {e}")
+                    return None
 
-            items = res.json().get('items', [])
-            if not items:
-                break
-
-            stop_early = False
-            for item in items:
-                pub_date = datetime.strptime(
-                    item['pubDate'], '%a, %d %b %Y %H:%M:%S +0900'
-                ).replace(tzinfo=kst)
-                if pub_date < since:
-                    stop_early = True
-                    break
-                raw_items.append({
-                    "pub_date": pub_date,
-                    "link": item.get('link', ''),
-                    "title": clean_html_text(item.get('title', '')),
-                })
-            if stop_early:
-                break
-            time.sleep(0.2)
-
-        except Exception as e:
-            st.error(f"API 요청 오류: {e}")
+        if res is None or res.status_code != 200:
+            st.error(f"네이버 API 오류: {res.status_code if res else 'No response'} — API 키를 확인해주세요.")
             return None
+
+        items = res.json().get('items', [])
+        if not items:
+            break
+
+        stop_early = False
+        for item in items:
+            pub_date = datetime.strptime(
+                item['pubDate'], '%a, %d %b %Y %H:%M:%S +0900'
+            ).replace(tzinfo=kst)
+            if pub_date < since:
+                stop_early = True
+                break
+            raw_items.append({
+                "pub_date": pub_date,
+                "link": item.get('link', ''),
+                "title": clean_html_text(item.get('title', '')),
+            })
+        if stop_early:
+            break
+        time.sleep(0.2)
 
     if not raw_items:
         st.warning("검색 결과가 없습니다.")
